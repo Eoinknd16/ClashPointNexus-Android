@@ -252,7 +252,7 @@ fun CustomizeScreen() {
                     ToggleRow("Vignette", b.vignette) { v -> edit { it.copy(backdrop = b.copy(vignette = v)) } }
                 }
 
-                Section("Motion & feel", if (!look.motion.animations) "Animations off" else "%.1f× speed · ${(look.motion.bounce * 100).roundToInt()}% bounce".format(look.motion.speed), icon = androidx.compose.material.icons.Icons.Filled.Animation, heading = "Feel", onReset = { edit(undoLabel = "Motion reset") { it.copy(motion = com.eoinknd16.nexus.look.Motion()) } }) {
+                Section("Motion & feel", if (!look.motion.animations) "Animations off" else "%.1f× speed".format(look.motion.speed) + " · ${(look.motion.bounce * 100).roundToInt()}% bounce", icon = androidx.compose.material.icons.Icons.Filled.Animation, heading = "Feel", onReset = { edit(undoLabel = "Motion reset") { it.copy(motion = com.eoinknd16.nexus.look.Motion()) } }) {
                     val m = look.motion
                     ToggleRow("Animations", m.animations) { v -> edit { it.copy(motion = m.copy(animations = v)) } }
                     SliderRow("Animation speed", m.speed, 0.4f..2.5f, { "%.1f×".format(it) }) { v -> edit { it.copy(motion = m.copy(speed = v)) } }
