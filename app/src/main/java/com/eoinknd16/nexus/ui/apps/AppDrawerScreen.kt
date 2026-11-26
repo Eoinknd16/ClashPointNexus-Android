@@ -1,5 +1,7 @@
 package com.eoinknd16.nexus.ui.apps
 
+import com.eoinknd16.nexus.ui.home.NotificationDot
+
 import androidx.compose.material.icons.filled.Delete
 
 import androidx.compose.material.icons.filled.Info
@@ -285,7 +287,7 @@ private fun AppCell(
         ) {
             Box {
                 Image(app.icon, null, Modifier.size(iconSize))
-                com.eoinknd16.nexus.ui.home.NotificationDot(com.eoinknd16.nexus.ui.home.notificationCount(listOf(app.packageName)))
+                NotificationDot(com.eoinknd16.nexus.ui.home.notificationCount(listOf(app.packageName)))
             }
             if (showLabel) Spacer(Modifier.height(6.dp))
             if (showLabel) Text(
