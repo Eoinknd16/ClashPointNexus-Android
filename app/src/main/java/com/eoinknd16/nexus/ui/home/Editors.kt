@@ -313,6 +313,36 @@ private fun TileEditor(blockId: String?, existing: TileConfig?, onDismiss: () ->
                     SliderRow("Columns", t.folderColumns.toFloat(), 2f..6f, { it.roundToInt().toString() }, steps = 3) { t = t.copy(folderColumns = it.roundToInt()) }
                 }
                 ToggleRow("Show app previews on the tile", t.folderPreview) { t = t.copy(folderPreview = it) }
+                HudLabel("When open")
+                ChoiceRow("Background", com.eoinknd16.nexus.look.FolderBackground.entries, t.folderBackground, { it.label }) { t = t.copy(folderBackground = it) }
+                SliderRow(
+                    "Blur behind",
+                    t.folderBlur, 0f..40f,
+                    { if (it < 0.5f) "off" else "${it.roundToInt()}dp" + if (android.os.Build.VERSION.SDK_INT < 31) " (Android 12+)" else "" },
+                ) { t = t.copy(folderBlur = it) }
+                SliderRow("Darken behind", t.folderDim, 0f..0.9f, { "${(it * 100).roundToInt()}%" }) { t = t.copy(folderDim = it) }
+                ChoiceRow("Opens", com.eoinknd16.nexus.look.FolderPosition.entries, t.folderPosition, { it.label }) { t = t.copy(folderPosition = it) }
+                SliderRow("Icon size", t.folderIconSize, 32f..96f, { "${it.roundToInt()}dp" }) { t = t.copy(folderIconSize = it) }
+                ToggleRow("App names", t.folderShowLabels) { t = t.copy(folderShowLabels = it) }
+                ToggleRow("Folder title", t.folderShowTitle) { t = t.copy(folderShowTitle = it) }
+                ToggleRow("Animate closing too", t.folderAnimateClose) { t = t.copy(folderAnimateClose = it) }
+                NexusButton("Use this style for every folder", accent = Nx.Magenta) {
+                    val src = t
+                    fun TileConfig.styled() = if (action.kind != TileAction.Kind.Folder) this else copy(
+                        folderAnimation = src.folderAnimation, folderStyle = src.folderStyle, folderColumns = src.folderColumns,
+                        folderPreview = src.folderPreview, folderBackground = src.folderBackground, folderBlur = src.folderBlur,
+                        folderDim = src.folderDim, folderPosition = src.folderPosition, folderIconSize = src.folderIconSize,
+                        folderShowLabels = src.folderShowLabels, folderShowTitle = src.folderShowTitle, folderAnimateClose = src.folderAnimateClose,
+                    )
+                    c.editLook { l ->
+                        l.copy(
+                            home = l.home.copy(
+                                blocks = l.home.blocks.map { b -> if (b is HomeBlock.Tiles) b.copy(tiles = b.tiles.map { it.styled() }) else b },
+                                dock = l.home.dock.copy(items = l.home.dock.items.map { it.styled() }),
+                            ),
+                        )
+                    }
+                }
             }
             else -> {}
         }

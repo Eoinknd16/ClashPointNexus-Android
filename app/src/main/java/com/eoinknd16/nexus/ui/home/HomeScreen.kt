@@ -10,6 +10,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -52,6 +53,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -117,6 +119,15 @@ fun HomeScreen() {
     }
     var editing by remember { mutableStateOf<HomeEdit?>(null) }
     var folder by remember { mutableStateOf<OpenFolder?>(null) }
+    var folderClosing by remember { mutableStateOf(false) }
+    var folderCloseRequest by remember { mutableStateOf(0) }
+    // Home blurs behind an open folder (Android 12+), easing in/out with it.
+    val blurTarget = folder?.takeIf { !folderClosing }?.tile?.folderBlur ?: 0f
+    val blur by androidx.compose.animation.core.animateFloatAsState(
+        if (look.motion.animations) blurTarget else 0f,
+        androidx.compose.animation.core.tween(com.eoinknd16.nexus.ui.fx.nexusMs(240)),
+        label = "folderBlur",
+    )
     var toast by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(toast) {
         if (toast != null) {
@@ -138,7 +149,7 @@ fun HomeScreen() {
 
     BackHandler {
         when {
-            folder != null -> folder = null
+            folder != null -> folderCloseRequest++
             editMode -> editMode = false
             // A launcher has nothing behind it to go back to.
         }
@@ -178,7 +189,7 @@ fun HomeScreen() {
                     vm = vm,
                     runner = runner,
                     editMode = editMode,
-                    onOpenFolder = { tile, origin -> folder = OpenFolder(tile, origin) },
+                    onOpenFolder = { tile, origin -> folderClosing = false; folder = OpenFolder(tile, origin) },
                     onEditTile = { tile ->
                         if (tile.locked && !editMode) toast = "Locked · unlock it in edit mode"
                         else editing = HomeEdit.Tile(block.id, tile)
@@ -189,13 +200,16 @@ fun HomeScreen() {
         }
     }
 
+    Box(Modifier.fillMaxSize()) {
     NexusBackdrop(
-        Modifier.homeGestures(
-            gestures = look.gestures,
-            enabled = !editMode && folder == null,
-            onAction = { runner.runAction(it) },
-            onFired = haptic,
-        ),
+        Modifier
+            .homeGestures(
+                gestures = look.gestures,
+                enabled = !editMode && folder == null,
+                onAction = { runner.runAction(it) },
+                onFired = haptic,
+            )
+            .then(if (blur > 0.5f) Modifier.blur(blur.dp) else Modifier),
     ) {
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
             AnimatedVisibility(editMode, enter = slideInVertically() + fadeIn(), exit = slideOutVertically() + fadeOut()) {
@@ -215,39 +229,44 @@ fun HomeScreen() {
                     Blocks(topBlocks)
                 }
             }
-            Column(
-                Modifier
-                    .weight(1f)
-                    .verticalScroll(rememberScrollState())
-                    // Long-press empty space = edit the home screen; double-tap = your double-tap action.
-                    .pointerInput(look.gestures.doubleTap) {
-                        detectTapGestures(
-                            onLongPress = { editMode = true },
-                            onDoubleTap = if (look.gestures.doubleTap.kind != TileAction.Kind.None) ({
-                                haptic()
-                                runner.runAction(look.gestures.doubleTap)
-                            }) else null,
-                        )
-                    }
-                    .then(pad),
-                verticalArrangement = spacing,
-            ) {
-                Spacer(Modifier.height(if (topBlocks.isEmpty()) 12.dp else 0.dp))
-                if (topBlocks.isEmpty()) com.eoinknd16.nexus.ui.update.UpdateBanner()
-                Blocks(middleBlocks)
-                if (editMode) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        NexusButton("Add block", icon = Icons.Filled.Add) { editing = HomeEdit.AddBlock }
-                        NexusButton("Add widget", icon = Icons.Filled.Widgets, accent = Nx.Magenta) { editing = HomeEdit.AddWidget }
+            BoxWithConstraints(Modifier.weight(1f)) {
+                val viewport = constraints.maxHeight
+                Column(
+                    Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        // Long-press empty space = edit the home screen; double-tap = your double-tap action.
+                        .pointerInput(look.gestures.doubleTap) {
+                            detectTapGestures(
+                                onLongPress = { editMode = true },
+                                onDoubleTap = if (look.gestures.doubleTap.kind != TileAction.Kind.None) ({
+                                    haptic()
+                                    runner.runAction(look.gestures.doubleTap)
+                                }) else null,
+                            )
+                        },
+                ) {
+                    // Auto-fit is off while editing, so toolbars never squash the real layout.
+                    AutoFit(viewport, if (editMode) com.eoinknd16.nexus.look.FitMode.Off else home.fit, home.fitTolerance) {
+                        Column(pad, verticalArrangement = spacing) {
+                            Spacer(Modifier.height(if (topBlocks.isEmpty()) 12.dp else 0.dp))
+                            if (topBlocks.isEmpty()) com.eoinknd16.nexus.ui.update.UpdateBanner()
+                            Blocks(middleBlocks)
+                            if (editMode) {
+                                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    NexusButton("Add block", icon = Icons.Filled.Add) { editing = HomeEdit.AddBlock }
+                                    NexusButton("Add widget", icon = Icons.Filled.Widgets, accent = Nx.Magenta) { editing = HomeEdit.AddWidget }
+                                }
+                            }
+                            if (home.blocks.isEmpty() && !editMode) {
+                                Text(
+                                    "Long-press to add things to your home screen",
+                                    style = MaterialTheme.typography.bodyMedium, color = Nx.Muted,
+                                )
+                            }
+                        }
                     }
                 }
-                if (home.blocks.isEmpty() && !editMode) {
-                    Text(
-                        "Long-press to add things to your home screen",
-                        style = MaterialTheme.typography.bodyMedium, color = Nx.Muted,
-                    )
-                }
-                Spacer(Modifier.height(12.dp))
             }
             // Pinned to the bottom: sits just above the tray.
             if (bottomBlocks.isNotEmpty()) {
@@ -269,11 +288,22 @@ fun HomeScreen() {
         }
 
         if (editMode && look.gestures.showZonesInEditMode) GestureZonesOverlay(look.gestures)
+    }
 
-        folder?.let { f -> FolderOverlay(f, runner, onClose = { folder = null }, onEdit = { blockless ->
-            folder = null
-            editing = HomeEdit.Tile(findTileOwner(blockless.id), blockless)
-        }) }
+        folder?.let { f ->
+            FolderOverlay(
+                folder = f,
+                runner = runner,
+                closeRequest = folderCloseRequest,
+                onClosing = { folderClosing = true },
+                onClose = {
+                    folder = null
+                    folderClosing = false
+                    folderCloseRequest = 0
+                },
+                onEdit = { t -> editing = HomeEdit.Tile(findTileOwner(t.id), t) },
+            )
+        }
 
         toast?.let {
             Text(

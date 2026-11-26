@@ -404,6 +404,13 @@ enum class FolderAnimation(val label: String) { Bloom("Bloom from tile"), Rise("
 @Serializable
 enum class FolderStyle(val label: String) { Grid("Grid"), Ring("Orbit ring") }
 
+/** What sits behind a folder's apps. None = the icons float on the blurred home screen. */
+@Serializable
+enum class FolderBackground(val label: String) { Panel("Holo panel"), Glass("Frosted glass"), None("None (floating)") }
+
+@Serializable
+enum class FolderPosition(val label: String) { Center("Centre"), FromTile("At the tile"), Bottom("Bottom") }
+
 @Serializable
 data class TileConfig(
     val id: String = newId(),
@@ -425,6 +432,17 @@ data class TileConfig(
     val folderStyle: FolderStyle = FolderStyle.Grid,
     /** Folder tiles show a mini preview of the first apps' icons. */
     val folderPreview: Boolean = true,
+    val folderBackground: FolderBackground = FolderBackground.Panel,
+    /** Home-screen blur behind the open folder, in dp (Android 12+; older phones dim instead). */
+    val folderBlur: Float = 16f,
+    /** 0..1 darkening behind the open folder. */
+    val folderDim: Float = 0.45f,
+    val folderPosition: FolderPosition = FolderPosition.Center,
+    val folderIconSize: Float = 52f,
+    val folderShowLabels: Boolean = true,
+    val folderShowTitle: Boolean = true,
+    /** Play the opening animation backwards when closing. */
+    val folderAnimateClose: Boolean = true,
     /** Locked = long-press won't open the editor (unlock from home edit mode). */
     val locked: Boolean = false,
     /** Per-tile border look; null fields fall back to Customise › Panels. */
@@ -460,8 +478,20 @@ data class DockConfig(
     val scrollable: Boolean = true,
 )
 
+/**
+ * How the scrolling middle of home handles being a bit too tall for the screen.
+ * Auto: if it overflows by no more than [HomeLayout.fitTolerance], shrink it
+ * evenly to fit exactly (no stray scrolling); otherwise scroll. Always: always
+ * fit (down to half size). Off: always scroll.
+ */
+@Serializable
+enum class FitMode(val label: String) { Auto("Auto-fit"), Always("Always fit"), Off("Scroll") }
+
 @Serializable
 data class HomeLayout(
+    val fit: FitMode = FitMode.Auto,
+    /** Auto-fit kicks in when the overflow is at most this fraction of the screen. */
+    val fitTolerance: Float = 0.25f,
     val blocks: List<HomeBlock> = emptyList(),
     val dock: DockConfig = DockConfig(),
     val sidePaddingDp: Float = 20f,

@@ -214,8 +214,15 @@ fun CustomizeScreen() {
 
                 Section("Gestures", "What each swipe does, and where it has to start") { GestureSettings() }
 
-                Section("Home screen", "Spacing and headings") {
+                Section("Home screen", "Fit, spacing and headings") {
                     val h = look.home
+                    ChoiceRow(
+                        "Fitting to the screen", com.eoinknd16.nexus.look.FitMode.entries, h.fit, { it.label },
+                        subtitle = "Auto-fit shrinks the scrolling part evenly when it's only a little too tall, so there's no stray scrolling",
+                    ) { v -> edit { it.copy(home = h.copy(fit = v)) } }
+                    if (h.fit == com.eoinknd16.nexus.look.FitMode.Auto) {
+                        SliderRow("Shrink up to", h.fitTolerance, 0.05f..0.5f, { "${(it * 100).roundToInt()}% overflow" }) { v -> edit { it.copy(home = h.copy(fitTolerance = v)) } }
+                    }
                     ToggleRow("Section headings", h.showHeadings) { v -> edit { it.copy(home = h.copy(showHeadings = v)) } }
                     SliderRow("Side margins", h.sidePaddingDp, 0f..40f, { "${it.roundToInt()}dp" }) { v -> edit { it.copy(home = h.copy(sidePaddingDp = v)) } }
                     SliderRow("Space between blocks", h.blockSpacingDp, 0f..48f, { "${it.roundToInt()}dp" }) { v -> edit { it.copy(home = h.copy(blockSpacingDp = v)) } }
