@@ -22,6 +22,9 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.Icon
@@ -143,26 +146,9 @@ fun FolderOverlay(
             .graphicsLayer { alpha = scrim.value }
             .background(Color.Black.copy(alpha = dim))
             .pointerInput(Unit) { detectTapGestures { close() } },
-        contentAlignment = if (tile.folderPosition == FolderPosition.Bottom) Alignment.BottomCenter else Alignment.Center,
     ) {
         val bodyMod = Modifier
-            .then(if (tile.folderPosition == FolderPosition.Bottom) Modifier.navigationBarsPadding().padding(bottom = 96.dp) else Modifier)
-            .then(
-                if (tile.folderPosition == FolderPosition.FromTile) {
-                    // Centre the folder on the tile's height (clamped to the screen by layout).
-                    Modifier.offset { IntOffset(0, (folder.origin.y - (panelOrigin.y + panelSize.h / 2f)).roundToInt()) }
-                } else Modifier,
-            )
             .fillMaxWidth(0.88f)
-            .onGloballyPositioned {
-                // Remember the un-offset position once, so the offset maths stays stable.
-                if (panelSize.h == 0) {
-                    panelOrigin.x = it.positionInRoot().x
-                    panelOrigin.y = it.positionInRoot().y
-                }
-                panelSize.w = it.size.width
-                panelSize.h = it.size.height
-            }
             .graphicsLayer {
                 val p = progress.value
                 when (tile.folderAnimation) {
@@ -201,6 +187,7 @@ fun FolderOverlay(
             .then(if (floating) Modifier else Modifier.pointerInput(Unit) { detectTapGestures { } })
             .padding(16.dp)
 
+        FolderPlacement(tile.folderPosition, folder.origin, panelOrigin, panelSize) {
         Column(bodyMod, horizontalAlignment = Alignment.CenterHorizontally) {
             if (tile.folderShowTitle) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -214,8 +201,10 @@ fun FolderOverlay(
                             HudLabel(tile.label, color = accent)
                         }
                     }
-                    Box(Modifier.size(36.dp).nexusPress({ close { onEdit(tile) } }), contentAlignment = Alignment.Center) {
-                        Icon(Icons.Filled.Edit, "Edit folder", tint = if (floating) Color.White.copy(alpha = 0.7f) else Nx.Muted)
+                    if (tile.folderShowEditButton) {
+                        Box(Modifier.size(36.dp).nexusPress({ close { onEdit(tile) } }), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Filled.Edit, "Edit folder", tint = if (floating) Color.White.copy(alpha = 0.7f) else Nx.Muted)
+                        }
                     }
                 }
                 Spacer(Modifier.height(14.dp))
@@ -226,7 +215,8 @@ fun FolderOverlay(
                 RingLayout(apps, accent, tile, progress.value, launchApp)
             } else {
                 val cols = tile.folderColumns.coerceIn(2, 6)
-                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                // Big folders scroll inside themselves instead of running off screen.
+                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     apps.chunked(cols).forEachIndexed { r, row ->
                         Row(Modifier.fillMaxWidth()) {
                             row.forEachIndexed { i, app ->
@@ -238,6 +228,7 @@ fun FolderOverlay(
                 }
             }
         }
+    }
     }
 }
 
@@ -307,5 +298,47 @@ private fun RingLayout(apps: List<LaunchableApp>, accent: Color, tile: TileConfi
                 }
             }
         }
+    }
+}
+
+
+/**
+ * Places the folder exactly: centred, centred on the tapped tile's height, or
+ * just above the tray -- always clamped inside the visible area (below the
+ * status bar, above the navigation bar), so it can never land off screen.
+ * Records where it put it so the Bloom animation can grow from the tile.
+ */
+@Composable
+private fun FolderPlacement(
+    position: FolderPosition,
+    origin: androidx.compose.ui.geometry.Offset,
+    placedAt: FloatPair,
+    placedSize: IntPair,
+    content: @Composable () -> Unit,
+) {
+    val density = LocalDensity.current
+    val topInset = androidx.compose.foundation.layout.WindowInsets.systemBars.getTop(density)
+    val bottomInset = androidx.compose.foundation.layout.WindowInsets.systemBars.getBottom(density)
+    androidx.compose.ui.layout.Layout(content = content, modifier = Modifier.fillMaxSize()) { measurables, constraints ->
+        val margin = 16.dp.roundToPx()
+        val top = topInset + margin
+        val bottom = constraints.maxHeight - bottomInset - margin
+        val available = (bottom - top).coerceAtLeast(0)
+        val placeable = measurables.first().measure(
+            androidx.compose.ui.unit.Constraints(maxWidth = constraints.maxWidth, maxHeight = available),
+        )
+        val h = placeable.height
+        val x = (constraints.maxWidth - placeable.width) / 2
+        val wanted = when (position) {
+            FolderPosition.Center -> (constraints.maxHeight - h) / 2
+            FolderPosition.FromTile -> (origin.y - h / 2f).roundToInt()
+            FolderPosition.Bottom -> bottom - h - 72.dp.roundToPx() // clear of the tray
+        }
+        val y = wanted.coerceIn(top, (bottom - h).coerceAtLeast(top))
+        placedAt.x = x.toFloat()
+        placedAt.y = y.toFloat()
+        placedSize.w = placeable.width
+        placedSize.h = h
+        layout(constraints.maxWidth, constraints.maxHeight) { placeable.place(x, y) }
     }
 }

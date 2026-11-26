@@ -193,7 +193,9 @@ fun CustomizeScreen() {
                     SliderRow("Intensity", b.intensity, 0f..1.6f, { "${(it * 100).roundToInt()}%" }) { v -> edit { it.copy(backdrop = b.copy(intensity = v)) } }
                     SliderRow("Speed", b.speed, 0f..3f, { "%.1f×".format(it) }) { v -> edit { it.copy(backdrop = b.copy(speed = v)) } }
                     ToggleRow("Animated", b.animated, "Off saves a little battery") { v -> edit { it.copy(backdrop = b.copy(animated = v)) } }
-                    SliderRow("Frame rate", b.fps.toFloat(), 10f..60f, { "${it.roundToInt()} fps" }) { v -> edit { it.copy(backdrop = b.copy(fps = v.roundToInt())) } }
+                    SliderRow("Frame rate", if (b.fps <= 0) 150f else b.fps.toFloat(), 10f..150f, { if (it >= 145f) "Match display" else "${it.roundToInt()} fps" }) { v ->
+                        edit { it.copy(backdrop = b.copy(fps = if (v >= 145f) 0 else v.roundToInt())) }
+                    }
                     ToggleRow("Scanlines", b.scanlines) { v -> edit { it.copy(backdrop = b.copy(scanlines = v)) } }
                     ToggleRow("Vignette", b.vignette) { v -> edit { it.copy(backdrop = b.copy(vignette = v)) } }
                 }
@@ -207,6 +209,7 @@ fun CustomizeScreen() {
                     ChoiceRow("Tiles appearing", com.eoinknd16.nexus.look.Entrance.entries, m.tileEntrance, { it.label }) { v -> edit { it.copy(motion = m.copy(tileEntrance = v)) } }
                     ChoiceRow("Opening an app", com.eoinknd16.nexus.look.AppLaunch.entries, m.appLaunch, { it.label }) { v -> edit { it.copy(motion = m.copy(appLaunch = v)) } }
                     ToggleRow("Strong haptics", m.strongHaptics, "Heavier buzz for gestures") { v -> edit { it.copy(motion = m.copy(strongHaptics = v)) } }
+                    ToggleRow("High refresh rate", m.highRefreshRate, "Run at your screen's fastest rate (90/120Hz+) while Nexus is open") { v -> edit { it.copy(motion = m.copy(highRefreshRate = v)) } }
                     ToggleRow("Glow pulse on tiles", m.pulse) { v -> edit { it.copy(motion = m.copy(pulse = v)) } }
                     ToggleRow("Haptic feedback", m.haptics) { v -> edit { it.copy(motion = m.copy(haptics = v)) } }
                     SliderRow("Press squish", 1f - m.pressScale, 0f..0.15f, { "${(it * 100).roundToInt()}%" }) { v -> edit { it.copy(motion = m.copy(pressScale = 1f - v)) } }

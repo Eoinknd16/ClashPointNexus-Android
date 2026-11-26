@@ -106,7 +106,8 @@ data class Backdrop(
     val vignette: Boolean = true,
     /** Animated at all (static saves battery). */
     val animated: Boolean = true,
-    val fps: Int = 30,
+    /** Backdrop frame rate cap; 0 = match the display (60/90/120/144Hz). */
+    val fps: Int = 0,
 )
 
 @Serializable
@@ -135,6 +136,8 @@ data class Motion(
     val appLaunch: AppLaunch = AppLaunch.Zoom,
     /** Haptic strength for gestures: light tick vs heavy thud. */
     val strongHaptics: Boolean = false,
+    /** Ask the phone for its fastest refresh rate (90/120/144Hz) while Nexus is open. */
+    val highRefreshRate: Boolean = true,
 )
 
 // ---- Home layout ---------------------------------------------------------------
@@ -443,6 +446,8 @@ data class TileConfig(
     val folderShowTitle: Boolean = true,
     /** Play the opening animation backwards when closing. */
     val folderAnimateClose: Boolean = true,
+    /** Pencil button inside the open folder (long-pressing the tile edits it either way). */
+    val folderShowEditButton: Boolean = false,
     /** Locked = long-press won't open the editor (unlock from home edit mode). */
     val locked: Boolean = false,
     /** Per-tile border look; null fields fall back to Customise › Panels. */

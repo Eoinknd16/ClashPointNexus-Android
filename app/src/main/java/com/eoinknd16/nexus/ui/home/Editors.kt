@@ -13,7 +13,10 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -84,21 +87,37 @@ import com.eoinknd16.nexus.ui.theme.Nx
 import com.eoinknd16.nexus.ui.theme.hud
 import kotlin.math.roundToInt
 
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * Full-screen editor panel. Replaces the old swipe-down bottom sheet, which
+ * could get dismissed by a scroll that went past the top of its content --
+ * this only closes via Done or Back.
+ */
 @Composable
 fun EditorSheet(title: String, onDismiss: () -> Unit, content: @Composable () -> Unit) {
-    ModalBottomSheet(
+    androidx.compose.ui.window.Dialog(
         onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = Nx.PanelSolid,
+        properties = androidx.compose.ui.window.DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false,
+            dismissOnClickOutside = false,
+        ),
     ) {
         Column(
-            Modifier.fillMaxWidth().navigationBarsPadding().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
+            Modifier.fillMaxSize().background(Nx.PanelSolid).statusBarsPadding().navigationBarsPadding().imePadding(),
         ) {
-            HudLabel(title)
-            Spacer(Modifier.height(12.dp))
-            content()
-            Spacer(Modifier.height(24.dp))
+            Row(
+                Modifier.fillMaxWidth().background(Nx.Deep).padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(title, style = MaterialTheme.typography.headlineSmall, color = Nx.Text, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                NexusButton("Done", icon = Icons.Filled.Check, filled = true, onClick = onDismiss)
+            }
+            Column(
+                Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 12.dp),
+            ) {
+                content()
+                Spacer(Modifier.height(32.dp))
+            }
         }
     }
 }
@@ -326,6 +345,7 @@ private fun TileEditor(blockId: String?, existing: TileConfig?, onDismiss: () ->
                 ToggleRow("App names", t.folderShowLabels) { t = t.copy(folderShowLabels = it) }
                 ToggleRow("Folder title", t.folderShowTitle) { t = t.copy(folderShowTitle = it) }
                 ToggleRow("Animate closing too", t.folderAnimateClose) { t = t.copy(folderAnimateClose = it) }
+                ToggleRow("Edit button in the open folder", t.folderShowEditButton, "Off keeps the opening clean; long-press the tile to edit") { t = t.copy(folderShowEditButton = it) }
                 NexusButton("Use this style for every folder", accent = Nx.Magenta) {
                     val src = t
                     fun TileConfig.styled() = if (action.kind != TileAction.Kind.Folder) this else copy(
@@ -333,6 +353,7 @@ private fun TileEditor(blockId: String?, existing: TileConfig?, onDismiss: () ->
                         folderPreview = src.folderPreview, folderBackground = src.folderBackground, folderBlur = src.folderBlur,
                         folderDim = src.folderDim, folderPosition = src.folderPosition, folderIconSize = src.folderIconSize,
                         folderShowLabels = src.folderShowLabels, folderShowTitle = src.folderShowTitle, folderAnimateClose = src.folderAnimateClose,
+                        folderShowEditButton = src.folderShowEditButton,
                     )
                     c.editLook { l ->
                         l.copy(

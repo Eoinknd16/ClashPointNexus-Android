@@ -182,7 +182,8 @@ private fun rememberBackdropTime(): Float {
     var time by remember { mutableFloatStateOf(12f) }
     LaunchedEffect(b.animated, b.fps, b.speed) {
         if (!b.animated) return@LaunchedEffect
-        val frameNs = 1_000_000_000L / b.fps.coerceIn(10, 60)
+        // 0 = every display frame (60/90/120Hz...), otherwise a cap.
+        val frameNs = if (b.fps <= 0) 0L else 1_000_000_000L / b.fps.coerceIn(10, 144)
         var last = 0L
         var prev = withFrameNanos { it }
         while (true) {

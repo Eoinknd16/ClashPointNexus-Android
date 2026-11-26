@@ -84,6 +84,8 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 com.eoinknd16.nexus.ui.fx.NeonClockDriver()
+                val highRefresh = com.eoinknd16.nexus.look.LookState.look.motion.highRefreshRate
+                LaunchedEffect(highRefresh) { applyRefreshRate(highRefresh) }
                 val motion = com.eoinknd16.nexus.look.LookState.look.motion
                 val t = if (motion.animations) motion.screenTransition else com.eoinknd16.nexus.look.ScreenTransition.None
                 val ms = com.eoinknd16.nexus.ui.fx.nexusMs(320)
@@ -120,6 +122,26 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    /**
+     * Many phones run apps at 60Hz unless they ask for more. This picks the
+     * display mode with the highest refresh rate at the current resolution
+     * (90/120/144Hz) -- or hands the choice back to the system when off.
+     */
+    private fun applyRefreshRate(high: Boolean) {
+        val display = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) display else @Suppress("DEPRECATION") windowManager.defaultDisplay
+        display ?: return
+        val current = display.mode
+        val best = display.supportedModes
+            .filter { it.physicalWidth == current.physicalWidth && it.physicalHeight == current.physicalHeight }
+            .maxByOrNull { it.refreshRate } ?: return
+        val params = window.attributes
+        params.preferredDisplayModeId = if (high) best.modeId else 0
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            params.preferredRefreshRate = if (high) best.refreshRate else 0f
+        }
+        window.attributes = params
     }
 
     override fun onStart() {
