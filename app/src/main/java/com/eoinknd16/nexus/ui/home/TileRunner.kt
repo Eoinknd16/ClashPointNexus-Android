@@ -1,5 +1,7 @@
 package com.eoinknd16.nexus.ui.home
 
+import com.eoinknd16.nexus.look.allBlocks
+
 import android.accessibilityservice.AccessibilityService
 import android.annotation.SuppressLint
 import com.eoinknd16.nexus.core.NexusAccessibilityService
@@ -143,7 +145,7 @@ class TileRunner(
     }
 
     fun webSearch(query: String, engine: SearchEngine? = null, customUrl: String? = null) {
-        val bar = com.eoinknd16.nexus.look.run { LookState.look.allBlocks }.filterIsInstance<HomeBlock.SearchBar>().firstOrNull()
+        val bar = LookState.look.allBlocks.filterIsInstance<HomeBlock.SearchBar>().firstOrNull()
         val e = engine ?: bar?.engine ?: SearchEngine.Google
         val template = if (e == SearchEngine.Custom) (customUrl ?: bar?.customUrl ?: SearchEngine.Google.url) else e.url
         if (query.isBlank()) {
