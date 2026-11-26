@@ -170,7 +170,7 @@ fun HomeScreen() {
         onDispose { if (HomeDrawerHub.controller === drawer) HomeDrawerHub.controller = null }
     }
     // Leaving home (an app opened, the screen turned off) resets the drawer.
-    LifecycleResumeEffect(drawer) { onPauseOrDispose { if (!drawer.dragging) drawer.snapClosed() } }
+    LifecycleResumeEffect(drawer) { onPauseOrDispose { drawer.reset() } }
     val drawerOpen by remember { androidx.compose.runtime.derivedStateOf { drawer.isOpen } }
     val searchRecede by androidx.compose.animation.core.animateFloatAsState(
         if (UniversalSearchHub.open) 1f else 0f, androidx.compose.animation.core.tween(com.eoinknd16.nexus.ui.fx.nexusMs(260)), label = "searchRecede",
@@ -425,6 +425,7 @@ fun HomeScreen() {
 
     editing?.let { e -> HomeEditorHost(e, onDismiss = { editing = null }, onEdit = { editing = it }) }
     PcHubPanel(onOpenRemote = { nav.navigate(Routes.PC) })
+    CrashCard()
 }
 
 /** Which Tiles block (or the dock, null) a tile lives in. */
@@ -619,6 +620,34 @@ private fun Modifier.trayBackdrop(fromPx: Float, blurDp: Float, fade: Boolean): 
                 blendMode = androidx.compose.ui.graphics.BlendMode.DstIn,
             )
             drawContext.canvas.restore()
+        }
+    }
+}
+
+
+/** "Nexus crashed last time" with the reason, so it can be copied and sent. */
+@Composable
+private fun CrashCard() {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var report by remember { mutableStateOf(com.eoinknd16.nexus.CrashReports.read(context)) }
+    val text = report ?: return
+    androidx.compose.ui.window.Dialog(onDismissRequest = { com.eoinknd16.nexus.CrashReports.clear(context); report = null }) {
+        Column(Modifier.fillMaxWidth().holoPanel(Nx.Danger, 0.3f).padding(16.dp)) {
+            Text("Nexus crashed last time", style = MaterialTheme.typography.titleLarge, color = Nx.Text)
+            Text("Copy this and send it over so it can be fixed.", style = MaterialTheme.typography.bodyMedium, color = Nx.Muted)
+            Spacer(Modifier.height(10.dp))
+            Text(
+                text.take(1500), style = MaterialTheme.typography.labelSmall, color = Nx.Text,
+                modifier = Modifier.fillMaxWidth().height(220.dp).background(Nx.Deep).verticalScroll(rememberScrollState()).padding(8.dp),
+            )
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                NexusButton("Copy", filled = true) {
+                    context.getSystemService(android.content.ClipboardManager::class.java)
+                        ?.setPrimaryClip(android.content.ClipData.newPlainText("Nexus crash", text))
+                }
+                NexusButton("Dismiss", accent = Nx.Muted) { com.eoinknd16.nexus.CrashReports.clear(context); report = null }
+            }
         }
     }
 }

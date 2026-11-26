@@ -41,9 +41,9 @@ android {
             signingConfig = signingConfigs.getByName("nexus")
         }
         release {
-            // R8 optimises the libraries (Compose especially) for smoother frames and faster start.
-            isMinifyEnabled = true
-            isShrinkResources = true
+            // R8 off again until it's verified on a device (it was a suspect in the v0.2.26 crashes).
+            isMinifyEnabled = false
+            isShrinkResources = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = signingConfigs.getByName("nexus")
         }

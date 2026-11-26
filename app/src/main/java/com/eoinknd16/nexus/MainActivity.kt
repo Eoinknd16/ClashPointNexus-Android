@@ -167,7 +167,7 @@ class MainActivity : ComponentActivity() {
         if (intent.action == Intent.ACTION_MAIN && intent.hasCategory(Intent.CATEGORY_HOME)) {
             homePressed.tryEmit(Unit)
             com.eoinknd16.nexus.look.HomePager.home()
-            com.eoinknd16.nexus.ui.home.HomeDrawerHub.controller?.close()
+            com.eoinknd16.nexus.ui.home.HomeDrawerHub.controller?.reset()
         }
     }
 }

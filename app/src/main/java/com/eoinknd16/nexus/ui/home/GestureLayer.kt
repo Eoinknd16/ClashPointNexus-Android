@@ -10,6 +10,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.composed
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -55,7 +58,25 @@ fun Modifier.homeGestures(
     overrideFor: (SwipeDir) -> TileAction? = { null },
     /** When swipe-up opens the app drawer, the drawer follows the finger instead of waiting for a flick. */
     drawer: DrawerController? = null,
-): Modifier = if (!enabled) this else pointerInput(gestures, overrideFor, drawer) {
+): Modifier = composed {
+    // The detector stays attached and is only restarted when the gesture
+    // settings change. Everything else is read live, so a change mid-swipe
+    // (e.g. the drawer starting to open) can never cut a gesture off halfway.
+    val isEnabled by rememberUpdatedState(enabled)
+    val act by rememberUpdatedState(onAction)
+    val fired by rememberUpdatedState(onFired)
+    val override by rememberUpdatedState(overrideFor)
+    pointerInput(gestures, drawer) { detectHomeGestures(gestures, { isEnabled }, { a, d -> act(a, d) }, { fired() }, { override(it) }, drawer) }
+}
+
+private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectHomeGestures(
+    gestures: Gestures,
+    enabled: () -> Boolean,
+    onAction: (TileAction, SwipeDir) -> Unit,
+    onFired: () -> Unit,
+    overrideFor: (SwipeDir) -> TileAction?,
+    drawer: DrawerController?,
+) {
     val touchSlop = viewConfiguration.touchSlop
     val minDistance = gestures.minDistanceDp.dp.toPx()
     val minVelocity = 600.dp.toPx() // px/s
@@ -64,6 +85,7 @@ fun Modifier.homeGestures(
             // Wait for a fresh first finger.
             var event = awaitPointerEvent(PointerEventPass.Initial)
             val first = event.changes.firstOrNull { it.pressed && !it.previousPressed } ?: continue
+            if (!enabled()) continue
             val start = first.position
             val h = size.height.toFloat()
             val w = size.width.toFloat()
@@ -105,17 +127,19 @@ fun Modifier.homeGestures(
                     drawer.startDrag()
                     drawer.dragBy(-(delta.y + touchSlop).coerceAtMost(0f))
                     var last = main.position.y
-                    while (true) {
-                        val e = awaitPointerEvent(PointerEventPass.Initial)
-                        val ch = e.changes.firstOrNull { it.id == first.id } ?: e.changes.first()
-                        if (!ch.pressed) {
-                            drawer.endDrag(-tracker.calculateVelocity().y)
-                            break
+                    try {
+                        while (true) {
+                            val e = awaitPointerEvent(PointerEventPass.Initial)
+                            val ch = e.changes.firstOrNull { it.id == first.id } ?: e.changes.firstOrNull()
+                            if (ch == null || !ch.pressed) break
+                            tracker.addPosition(ch.uptimeMillis, ch.position)
+                            drawer.dragBy(last - ch.position.y)
+                            last = ch.position.y
+                            e.changes.forEach { it.consume() }
                         }
-                        tracker.addPosition(ch.uptimeMillis, ch.position)
-                        drawer.dragBy(last - ch.position.y)
-                        last = ch.position.y
-                        e.changes.forEach { it.consume() }
+                    } finally {
+                        // Always let go, even if this touch was interrupted.
+                        drawer.endDrag(runCatching { -tracker.calculateVelocity().y }.getOrDefault(0f))
                     }
                     break
                 }

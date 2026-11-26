@@ -26,7 +26,39 @@ class NexusApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        CrashReports.install(this)
         container = AppContainer(this)
+    }
+}
+
+/**
+ * If Nexus crashes, the reason is saved to a file and shown on home the next
+ * time it opens, with a Copy button, so it can be sent over and fixed.
+ */
+object CrashReports {
+    private const val FILE = "last_crash.txt"
+
+    fun install(app: Application) {
+        val previous = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, error ->
+            runCatching {
+                val version = runCatching { app.packageManager.getPackageInfo(app.packageName, 0).versionName }.getOrNull()
+                val text = buildString {
+                    appendLine("Nexus $version · Android ${android.os.Build.VERSION.RELEASE} · ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}")
+                    appendLine("Thread: ${thread.name} · ${java.util.Date()}")
+                    appendLine(android.util.Log.getStackTraceString(error).take(12_000))
+                }
+                java.io.File(app.filesDir, FILE).writeText(text)
+            }
+            previous?.uncaughtException(thread, error)
+        }
+    }
+
+    fun read(context: android.content.Context): String? =
+        runCatching { java.io.File(context.filesDir, FILE).takeIf { it.exists() }?.readText() }.getOrNull()
+
+    fun clear(context: android.content.Context) {
+        runCatching { java.io.File(context.filesDir, FILE).delete() }
     }
 }
 

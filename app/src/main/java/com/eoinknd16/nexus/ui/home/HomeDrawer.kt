@@ -51,7 +51,8 @@ class DrawerController(private val scope: CoroutineScope, private val haptics: H
         private set
     private var pastCommit = false
 
-    val isOpen get() = progress.value > 0.001f || dragging
+    /** Visible at all. Only the position counts, so a stuck flag can never leave an invisible layer over home. */
+    val isOpen get() = progress.value > 0.002f
 
     private fun spec(velocity: Float) = run {
         val m = LookState.look.motion
@@ -79,6 +80,7 @@ class DrawerController(private val scope: CoroutineScope, private val haptics: H
 
     /** [velocityUp] in px/s, positive = flung upwards. */
     fun endDrag(velocityUp: Float) {
+        if (!dragging) return
         dragging = false
         val open = when {
             velocityUp > 900f -> true
@@ -91,6 +93,13 @@ class DrawerController(private val scope: CoroutineScope, private val haptics: H
     fun open() = settle(true, 0f)
     fun close() = settle(false, 0f)
     fun snapClosed() = scope.launch { progress.snapTo(0f) }
+
+    /** Hard reset: closed, not dragging (leaving home, Home button). */
+    fun reset() {
+        dragging = false
+        pastCommit = false
+        scope.launch { progress.snapTo(0f) }
+    }
 
     private fun settle(open: Boolean, velocity: Float) {
         scope.launch {
