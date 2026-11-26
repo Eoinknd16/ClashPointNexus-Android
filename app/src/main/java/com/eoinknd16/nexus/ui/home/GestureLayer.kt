@@ -31,7 +31,8 @@ import com.eoinknd16.nexus.ui.theme.Nx
 import com.eoinknd16.nexus.ui.theme.hud
 import kotlin.math.abs
 
-private enum class Dir { Up, Down, Left, Right }
+enum class SwipeDir { Up, Down, Left, Right }
+private typealias Dir = SwipeDir
 
 /**
  * Home-screen gesture detection that only fires when a swipe clearly means it:
@@ -48,9 +49,11 @@ private enum class Dir { Up, Down, Left, Right }
 fun Modifier.homeGestures(
     gestures: Gestures,
     enabled: Boolean,
-    onAction: (TileAction) -> Unit,
+    onAction: (TileAction, SwipeDir) -> Unit,
     onFired: () -> Unit,
-): Modifier = if (!enabled) this else pointerInput(gestures) {
+    /** Lets the screen take over a direction (e.g. "swipe back to the main page"). */
+    overrideFor: (SwipeDir) -> TileAction? = { null },
+): Modifier = if (!enabled) this else pointerInput(gestures, overrideFor) {
     val minDistance = gestures.minDistanceDp.dp.toPx()
     val minVelocity = 600.dp.toPx() // px/s
     awaitPointerEventScope {
@@ -99,7 +102,8 @@ fun Modifier.homeGestures(
                 val speed = if (dir == Dir.Up || dir == Dir.Down) abs(v.y) else abs(v.x)
                 if (speed < minVelocity) continue
 
-                val binding: GestureBinding? = if (maxPointers >= 2) {
+                val forced = if (maxPointers == 1) overrideFor(dir) else null
+                val binding: GestureBinding? = if (forced != null) GestureBinding(forced, GestureZone.Anywhere) else if (maxPointers >= 2) {
                     when (dir) {
                         Dir.Up -> gestures.twoFingerUp
                         Dir.Down -> gestures.twoFingerDown
@@ -126,7 +130,7 @@ fun Modifier.homeGestures(
                 fired = true
                 event.changes.forEach { it.consume() }
                 onFired()
-                onAction(binding.action)
+                onAction(binding.action, dir)
             }
         }
     }
@@ -176,4 +180,7 @@ fun rememberGestureHaptic(): () -> Unit {
 }
 
 /** Gesture actions reuse the tile runner (folders aren't a gesture target). */
-fun TileRunner.runAction(action: TileAction) = run(TileConfig(label = "", action = action))
+fun TileRunner.runAction(action: TileAction, dir: SwipeDir? = null) = run(
+    TileConfig(label = "", action = action),
+    swipe = when (dir) { SwipeDir.Left -> -1; SwipeDir.Right -> 1; else -> 0 },
+)

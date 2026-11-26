@@ -1,5 +1,8 @@
 package com.eoinknd16.nexus.look
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+
 /** Pure edits on the look tree, used by the home edit mode and Customise. */
 
 fun <T> List<T>.moved(index: Int, delta: Int): List<T> {
@@ -8,19 +11,80 @@ fun <T> List<T>.moved(index: Int, delta: Int): List<T> {
     return toMutableList().apply { add(j, removeAt(index)) }
 }
 
+/** Every block on every page (main first). Block ids are unique across pages. */
+val Look.allBlocks: List<HomeBlock> get() = home.blocks + home.pages.flatMap { it.blocks }
+
+/** Apply [f] to the block list of the main page and of every extra page. */
+fun Look.mapAllBlocks(f: (List<HomeBlock>) -> List<HomeBlock>): Look =
+    copy(home = home.copy(blocks = f(home.blocks), pages = home.pages.map { it.copy(blocks = f(it.blocks)) }))
+
 fun Look.updateBlock(id: String, transform: (HomeBlock) -> HomeBlock): Look =
-    copy(home = home.copy(blocks = home.blocks.map { if (it.id == id) transform(it) else it }))
+    mapAllBlocks { list -> list.map { if (it.id == id) transform(it) else it } }
 
 fun Look.moveBlock(id: String, delta: Int): Look =
-    copy(home = home.copy(blocks = home.blocks.moved(home.blocks.indexOfFirst { it.id == id }, delta)))
+    mapAllBlocks { list -> list.indexOfFirst { it.id == id }.let { i -> if (i < 0) list else list.moved(i, delta) } }
 
-fun Look.removeBlock(id: String): Look = copy(home = home.copy(blocks = home.blocks.filterNot { it.id == id }))
+fun Look.removeBlock(id: String): Look = mapAllBlocks { list -> list.filterNot { it.id == id } }
 
-fun Look.addBlock(block: HomeBlock, afterId: String? = null): Look {
-    val list = home.blocks.toMutableList()
-    val i = afterId?.let { a -> list.indexOfFirst { it.id == a } } ?: -1
-    if (i >= 0) list.add(i + 1, block) else list.add(block)
-    return copy(home = home.copy(blocks = list))
+/** Adds to [pageId]'s blocks (null = main page; defaults to the page on screen). */
+fun Look.addBlock(block: HomeBlock, afterId: String? = null, pageId: String? = HomePager.current): Look {
+    fun List<HomeBlock>.with(): List<HomeBlock> {
+        val list = toMutableList()
+        val i = afterId?.let { a -> list.indexOfFirst { it.id == a } } ?: -1
+        if (i >= 0) list.add(i + 1, block) else list.add(block)
+        return list
+    }
+    val page = home.pages.firstOrNull { it.id == pageId }
+    return if (page == null) copy(home = home.copy(blocks = home.blocks.with()))
+    else copy(home = home.copy(pages = home.pages.map { if (it.id == page.id) it.copy(blocks = it.blocks.with()) else it }))
+}
+
+fun Look.updatePage(id: String, transform: (HomePage) -> HomePage): Look =
+    copy(home = home.copy(pages = home.pages.map { if (it.id == id) transform(it) else it }))
+
+fun Look.removePage(id: String): Look = copy(home = home.copy(pages = home.pages.filterNot { it.id == id }))
+
+fun Look.movePage(id: String, delta: Int): Look =
+    copy(home = home.copy(pages = home.pages.moved(home.pages.indexOfFirst { it.id == id }, delta)))
+
+fun Look.addPage(page: HomePage): Look = copy(home = home.copy(pages = home.pages + page))
+
+/**
+ * Which home page is on screen (null = main) and which side the next one
+ * slides in from. Kept outside the saved look: it resets to main on restart
+ * and whenever the home button is pressed.
+ */
+object HomePager {
+    var current: String? by androidx.compose.runtime.mutableStateOf(null)
+    /** +1 = new page slides in from the right, -1 = from the left. */
+    var direction: Int by androidx.compose.runtime.mutableIntStateOf(1)
+    /** The swipe direction (-1 left / +1 right / 0 tile) that opened the current page. */
+    var openedBy: Int by androidx.compose.runtime.mutableIntStateOf(0)
+
+    /** [target]: a page id, "main", "next" or "prev". [swipe]: -1 left, +1 right, 0 not a swipe. */
+    fun go(target: String, swipe: Int = 0) {
+        val pages = LookState.look.home.pages
+        val order = listOf<String?>(null) + pages.map { it.id }
+        val here = order.indexOf(current).coerceAtLeast(0)
+        val dest: String? = when (target) {
+            "main", "" -> null
+            "next" -> order[(here + 1) % order.size]
+            "prev" -> order[(here - 1 + order.size) % order.size]
+            // Asking for the page you're already on takes you back home.
+            else -> if (target == current) null else pages.firstOrNull { it.id == target }?.id
+        }
+        if (dest == current) return
+        val there = order.indexOf(dest)
+        direction = when {
+            swipe < 0 -> 1 // finger moved left: page comes in from the right
+            swipe > 0 -> -1
+            else -> if (there > here) 1 else -1
+        }
+        openedBy = if (dest == null) 0 else swipe
+        current = dest
+    }
+
+    fun home() { if (current != null) go("main") }
 }
 
 fun Look.updateDock(transform: (DockConfig) -> DockConfig): Look = copy(home = home.copy(dock = transform(home.dock)))

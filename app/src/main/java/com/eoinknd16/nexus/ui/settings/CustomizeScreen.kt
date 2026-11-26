@@ -476,7 +476,11 @@ private val GESTURE_ACTIONS: List<Pair<TileAction, String>> = buildList {
 private fun ActionPicker(title: String, action: TileAction, onChange: (TileAction) -> Unit) {
     val apps by appContainer().apps.apps.collectAsStateWithLifecycle()
     val appOptions = apps.map { TileAction(TileAction.Kind.LaunchApp, it.key) to "App: ${it.label}" }
-    val all = GESTURE_ACTIONS + appOptions
+    val pageOptions = listOf(
+        TileAction(TileAction.Kind.Page, "next") to "Next home page",
+        TileAction(TileAction.Kind.Page, "prev") to "Previous home page",
+    ) + com.eoinknd16.nexus.look.LookState.look.home.pages.map { TileAction(TileAction.Kind.Page, it.id) to "Page: ${it.name}" }
+    val all = GESTURE_ACTIONS + pageOptions + appOptions
     val current = all.firstOrNull { it.first == action } ?: (action to action.kind.label)
     ChoiceRow(title, all, current, { it.second }) { onChange(it.first) }
 }

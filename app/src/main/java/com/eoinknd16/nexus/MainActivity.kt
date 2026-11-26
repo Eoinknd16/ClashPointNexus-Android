@@ -165,6 +165,7 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         if (intent.action == Intent.ACTION_MAIN && intent.hasCategory(Intent.CATEGORY_HOME)) {
             homePressed.tryEmit(Unit)
+            com.eoinknd16.nexus.look.HomePager.home()
         }
     }
 }

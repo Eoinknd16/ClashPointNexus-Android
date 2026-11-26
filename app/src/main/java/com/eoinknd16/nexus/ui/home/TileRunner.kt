@@ -96,7 +96,7 @@ class TileRunner(
     fun appIcon(tile: TileConfig): ImageBitmap? =
         if (tile.action.kind == TileAction.Kind.LaunchApp && tile.useAppIcon) app(tile.action.arg)?.icon else null
 
-    fun run(tile: TileConfig, from: androidx.compose.ui.geometry.Rect? = null) {
+    fun run(tile: TileConfig, from: androidx.compose.ui.geometry.Rect? = null, swipe: Int = 0) {
         val a = tile.action
         when (a.kind) {
             TileAction.Kind.Screen -> screenRoute(a.arg)?.let { nav.navigate(it) } ?: toast("Unknown screen")
@@ -126,6 +126,7 @@ class TileRunner(
             }
             TileAction.Kind.LockScreen -> if (!NexusAccessibilityService.lockScreen()) needsAccessibility()
             TileAction.Kind.Recents -> if (!NexusAccessibilityService.perform(AccessibilityService.GLOBAL_ACTION_RECENTS)) needsAccessibility()
+            TileAction.Kind.Page -> com.eoinknd16.nexus.look.HomePager.go(a.arg.ifBlank { "next" }, swipe)
             TileAction.Kind.Folder, TileAction.Kind.None -> {}
         }
     }
@@ -142,7 +143,7 @@ class TileRunner(
     }
 
     fun webSearch(query: String, engine: SearchEngine? = null, customUrl: String? = null) {
-        val bar = LookState.look.home.blocks.filterIsInstance<HomeBlock.SearchBar>().firstOrNull()
+        val bar = com.eoinknd16.nexus.look.run { LookState.look.allBlocks }.filterIsInstance<HomeBlock.SearchBar>().firstOrNull()
         val e = engine ?: bar?.engine ?: SearchEngine.Google
         val template = if (e == SearchEngine.Custom) (customUrl ?: bar?.customUrl ?: SearchEngine.Google.url) else e.url
         if (query.isBlank()) {

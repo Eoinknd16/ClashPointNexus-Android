@@ -397,6 +397,7 @@ data class TileAction(val kind: Kind, val arg: String = "") {
         QuickSettings("Open quick settings"),
         LockScreen("Lock the screen"),
         Recents("Recent apps"),
+        Page("Go to a home page"),
         None("Nothing"),
     }
 }
@@ -502,6 +503,15 @@ enum class DockArrange(val label: String) { Even("Spread evenly"), Center("Centr
 @Serializable
 enum class FitMode(val label: String) { Auto("Auto-fit"), Always("Always fit"), Off("Scroll") }
 
+/** An extra home page with its own blocks. The tray is shared. */
+@Serializable
+data class HomePage(
+    val id: String = newId(),
+    val name: String = "New page",
+    val blocks: List<HomeBlock> = emptyList(),
+    val showDock: Boolean = true,
+)
+
 @Serializable
 data class HomeLayout(
     val fit: FitMode = FitMode.Auto,
@@ -513,6 +523,10 @@ data class HomeLayout(
     val blockSpacingDp: Float = 22f,
     /** Show "// LABEL" headings above blocks that have titles. */
     val showHeadings: Boolean = true,
+    /** Extra home pages besides the main one ([blocks]); each starts blank. */
+    val pages: List<HomePage> = emptyList(),
+    /** Little dots above the tray showing which page you're on. */
+    val showPageDots: Boolean = true,
 ) {
     companion object {
         fun defaultTiles(): List<TileConfig> = listOf(

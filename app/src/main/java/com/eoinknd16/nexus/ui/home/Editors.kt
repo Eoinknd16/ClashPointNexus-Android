@@ -1,5 +1,17 @@
 package com.eoinknd16.nexus.ui.home
 
+import com.eoinknd16.nexus.look.allBlocks
+
+import com.eoinknd16.nexus.look.addPage
+
+import com.eoinknd16.nexus.look.movePage
+
+import com.eoinknd16.nexus.look.removePage
+
+import com.eoinknd16.nexus.look.updatePage
+
+import com.eoinknd16.nexus.look.mapAllBlocks
+
 import android.appwidget.AppWidgetProviderInfo
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -28,6 +40,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -125,11 +138,12 @@ fun EditorSheet(title: String, onDismiss: () -> Unit, content: @Composable () ->
 @Composable
 fun HomeEditorHost(edit: HomeEdit, onDismiss: () -> Unit, onEdit: (HomeEdit) -> Unit) {
     when (edit) {
-        is HomeEdit.Block -> LookState.look.home.blocks.firstOrNull { it.id == edit.id }?.let { BlockEditor(it, onDismiss, onEdit) }
+        is HomeEdit.Block -> LookState.look.allBlocks.firstOrNull { it.id == edit.id }?.let { BlockEditor(it, onDismiss, onEdit) }
         is HomeEdit.Tile -> TileEditor(edit.blockId, edit.tile, onDismiss)
         HomeEdit.AddBlock -> AddBlockSheet(onDismiss, onEdit)
         HomeEdit.AddWidget -> WidgetPickerSheet(onDismiss)
         HomeEdit.Dock -> DockEditor(onDismiss, onEdit)
+        HomeEdit.Pages -> PagesEditor(onDismiss)
     }
 }
 
@@ -290,6 +304,7 @@ private fun TileEditor(blockId: String?, existing: TileConfig?, onDismiss: () ->
                 TileAction.Kind.PcNav -> PC_NAV_TARGETS.first().first
                 TileAction.Kind.PcScreen -> PC_SCREEN_TARGETS.first().first
                 TileAction.Kind.Settings -> SETTINGS_TARGETS.first().first
+                TileAction.Kind.Page -> "next"
                 else -> ""
             }
             t = t.copy(action = TileAction(k, arg), icon = defaultIcon(k, t.icon))
@@ -300,6 +315,11 @@ private fun TileEditor(blockId: String?, existing: TileConfig?, onDismiss: () ->
             TileAction.Kind.PcNav -> TargetChips("Button", PC_NAV_TARGETS, t.action.arg) { key, label -> t = t.copy(action = t.action.copy(arg = key), label = relabel(t, label)) }
             TileAction.Kind.PcScreen -> TargetChips("PC screen", PC_SCREEN_TARGETS, t.action.arg) { key, label -> t = t.copy(action = t.action.copy(arg = key), label = relabel(t, label)) }
             TileAction.Kind.Settings -> TargetChips("Setting", SETTINGS_TARGETS, t.action.arg) { key, label -> t = t.copy(action = t.action.copy(arg = key), label = relabel(t, label)) }
+            TileAction.Kind.Page -> {
+                val targets = listOf("next" to "Next page", "prev" to "Previous page", "main" to "Main page") +
+                    LookState.look.home.pages.map { it.id to it.name }
+                TargetChips("Page", targets, t.action.arg) { key, label -> t = t.copy(action = t.action.copy(arg = key), label = relabel(t, label)) }
+            }
             TileAction.Kind.Url -> TextRow("Link", t.action.arg, "https://…", KeyboardType.Uri) { t = t.copy(action = t.action.copy(arg = it)) }
             TileAction.Kind.WebSearch -> TextRow("Search for (blank = open search page)", t.action.arg) { t = t.copy(action = t.action.copy(arg = it)) }
             TileAction.Kind.LaunchApp -> {
@@ -355,13 +375,9 @@ private fun TileEditor(blockId: String?, existing: TileConfig?, onDismiss: () ->
                         folderShowLabels = src.folderShowLabels, folderShowTitle = src.folderShowTitle, folderAnimateClose = src.folderAnimateClose,
                         folderShowEditButton = src.folderShowEditButton,
                     )
-                    c.editLook { l ->
-                        l.copy(
-                            home = l.home.copy(
-                                blocks = l.home.blocks.map { b -> if (b is HomeBlock.Tiles) b.copy(tiles = b.tiles.map { it.styled() }) else b },
-                                dock = l.home.dock.copy(items = l.home.dock.items.map { it.styled() }),
-                            ),
-                        )
+                    c.editLook { l0 ->
+                        val l = l0.mapAllBlocks { list -> list.map { b -> if (b is HomeBlock.Tiles) b.copy(tiles = b.tiles.map { it.styled() }) else b } }
+                        l.copy(home = l.home.copy(dock = l.home.dock.copy(items = l.home.dock.items.map { it.styled() })))
                     }
                 }
             }
@@ -446,6 +462,7 @@ private fun defaultIcon(kind: TileAction.Kind, current: String): String = when (
     TileAction.Kind.QuickSettings -> "settings"
     TileAction.Kind.Recents -> "apps"
     TileAction.Kind.Notifications -> "mail"
+    TileAction.Kind.Page -> "home"
     else -> current
 }
 
@@ -612,6 +629,51 @@ private fun WidgetPickerSheet(onDismiss: () -> Unit) {
                     }
                 }
             }
+        }
+    }
+}
+
+
+@Composable
+private fun PagesEditor(onDismiss: () -> Unit) {
+    val c = appContainer()
+    val home = LookState.look.home
+    val pager = com.eoinknd16.nexus.look.HomePager
+    EditorSheet("Home pages", onDismiss) {
+        Text(
+            "Extra pages start blank. Get to them with a swipe (Customise › Gestures › \"Page: …\" or Next page), a tile, or the dots above the tray. Swipe back the other way, press Back or Home to return.",
+            style = MaterialTheme.typography.bodySmall, color = Nx.Muted,
+        )
+        Spacer(Modifier.height(8.dp))
+        ToggleRow("Page dots above the tray", home.showPageDots) { v -> c.editLook { it.copy(home = it.home.copy(showPageDots = v)) } }
+        HudLabel("Pages")
+        Row(Modifier.fillMaxWidth().padding(vertical = 4.dp).holoPanel(if (pager.current == null) Nx.Cyan else Nx.CyanDim, glow = 0f).nexusPress({ pager.go("main"); onDismiss() }).padding(14.dp)) {
+            Text("Main page", style = MaterialTheme.typography.titleMedium, color = Nx.Text, modifier = Modifier.weight(1f))
+            Text(hud(if (pager.current == null) "On screen" else "Tap to go"), style = MaterialTheme.typography.labelSmall, color = Nx.Muted)
+        }
+        home.pages.forEachIndexed { i, page ->
+            Column(Modifier.fillMaxWidth().padding(vertical = 4.dp).holoPanel(if (pager.current == page.id) Nx.Cyan else Nx.CyanDim, glow = 0f).padding(10.dp)) {
+                TextRow("Name", page.name) { v -> c.editLook { it.updatePage(page.id) { p -> p.copy(name = v) } } }
+                ToggleRow("Show the tray on this page", page.showDock) { v -> c.editLook { it.updatePage(page.id) { p -> p.copy(showDock = v) } } }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    NexusButton("Go to", icon = Icons.Filled.Check) { pager.go(page.id); onDismiss() }
+                    if (i > 0) EditIcon(Icons.Filled.KeyboardArrowUp, "Move earlier", { c.editLook { it.movePage(page.id, -1) } })
+                    if (i < home.pages.lastIndex) EditIcon(Icons.Filled.KeyboardArrowDown, "Move later", { c.editLook { it.movePage(page.id, 1) } })
+                    Spacer(Modifier.weight(1f))
+                    EditIcon(Icons.Filled.Delete, "Delete page", {
+                        if (pager.current == page.id) pager.go("main")
+                        page.blocks.filterIsInstance<HomeBlock.Widget>().forEach { c.widgets.delete(it.appWidgetId) }
+                        c.editLook { it.removePage(page.id) }
+                    }, Nx.Danger)
+                }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        NexusButton("New blank page", icon = Icons.Filled.Add, filled = true) {
+            val page = com.eoinknd16.nexus.look.HomePage(name = "Page ${home.pages.size + 2}")
+            c.editLook { it.addPage(page) }
+            pager.go(page.id)
+            onDismiss()
         }
     }
 }

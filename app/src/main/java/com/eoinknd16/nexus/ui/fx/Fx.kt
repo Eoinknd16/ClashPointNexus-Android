@@ -303,7 +303,7 @@ object NeonClock {
 fun NeonClockDriver() {
     val look = LookState.look
     val needed = look.motion.animations && (look.shape.borderStyle == BorderStyle.Neon ||
-        look.home.blocks.any { b -> b is com.eoinknd16.nexus.look.HomeBlock.Tiles && b.tiles.any { it.border?.style == BorderStyle.Neon } } ||
+        (look.home.blocks + look.home.pages.flatMap { it.blocks }).any { b -> b is com.eoinknd16.nexus.look.HomeBlock.Tiles && b.tiles.any { it.border?.style == BorderStyle.Neon } } ||
         look.home.dock.items.any { it.border?.style == BorderStyle.Neon })
     LaunchedEffect(needed, look.motion.speed) {
         if (!needed) return@LaunchedEffect

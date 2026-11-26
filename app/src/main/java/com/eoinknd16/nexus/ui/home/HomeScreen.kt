@@ -41,6 +41,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.Widgets
+import androidx.compose.material.icons.filled.ViewCarousel
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -54,6 +55,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -69,6 +71,8 @@ import com.eoinknd16.nexus.look.LookState
 import com.eoinknd16.nexus.look.TileAction
 import com.eoinknd16.nexus.look.TileConfig
 import com.eoinknd16.nexus.look.appTile
+import com.eoinknd16.nexus.look.allBlocks
+import androidx.compose.animation.togetherWith
 import com.eoinknd16.nexus.look.moveBlock
 import com.eoinknd16.nexus.look.removeBlock
 import com.eoinknd16.nexus.look.updateBlock
@@ -93,6 +97,7 @@ sealed interface HomeEdit {
     data object AddBlock : HomeEdit
     data object AddWidget : HomeEdit
     data object Dock : HomeEdit
+    data object Pages : HomeEdit
 }
 
 /** A folder being shown, and where on screen it was tapped (its animation grows from there). */
@@ -162,10 +167,13 @@ fun HomeScreen() {
 
     val haptic = rememberGestureHaptic()
 
-    val visibleBlocks = home.blocks.filter { it.visible || editMode }
-    val topBlocks = visibleBlocks.filter { it.pin == BlockPin.Top }
-    val middleBlocks = visibleBlocks.filter { it.pin == BlockPin.None }
-    val bottomBlocks = visibleBlocks.filter { it.pin == BlockPin.Bottom }
+    val pager = com.eoinknd16.nexus.look.HomePager
+    // A deleted page falls back to main.
+    LaunchedEffect(home.pages, pager.current) {
+        if (pager.current != null && home.pages.none { it.id == pager.current }) pager.current = null
+    }
+    val currentPage = home.pages.firstOrNull { it.id == pager.current }
+    BackHandler(enabled = currentPage != null && folder == null && !editMode) { pager.go("main") }
 
     @Composable
     fun Blocks(list: List<HomeBlock>) {
@@ -206,20 +214,47 @@ fun HomeScreen() {
             .homeGestures(
                 gestures = look.gestures,
                 enabled = !editMode && folder == null,
-                onAction = { runner.runAction(it) },
+                onAction = { a, dir -> runner.runAction(a, dir) },
                 onFired = haptic,
+                // On an extra page, swiping back the way you came returns to main
+                // (either way if it was opened by a tile/dots).
+                overrideFor = { dir ->
+                    val back = when (pager.openedBy) { -1 -> SwipeDir.Right; 1 -> SwipeDir.Left; else -> null }
+                    val horizontal = dir == SwipeDir.Left || dir == SwipeDir.Right
+                    if (pager.current != null && horizontal && (back == null || dir == back)) TileAction(TileAction.Kind.Page, "main") else null
+                },
             )
             .then(if (blur > 0.5f) Modifier.blur(blur.dp) else Modifier),
     ) {
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
             AnimatedVisibility(editMode, enter = slideInVertically() + fadeIn(), exit = slideOutVertically() + fadeOut()) {
                 EditBar(
+                    pageName = currentPage?.name,
                     onDone = { editMode = false },
                     onAddBlock = { editing = HomeEdit.AddBlock },
                     onAddWidget = { editing = HomeEdit.AddWidget },
+                    onPages = { editing = HomeEdit.Pages },
                     onCustomise = { nav.navigate(Routes.CUSTOMIZE) },
                 )
             }
+            androidx.compose.animation.AnimatedContent(
+                targetState = pager.current,
+                modifier = Modifier.weight(1f),
+                transitionSpec = {
+                    val d = pager.direction
+                    val spec = com.eoinknd16.nexus.ui.fx.nexusSpring<androidx.compose.ui.unit.IntOffset>()
+                    if (!look.motion.animations) fadeIn(androidx.compose.animation.core.snap()) togetherWith fadeOut(androidx.compose.animation.core.snap())
+                    else (androidx.compose.animation.slideInHorizontally(spec) { w -> w * d } + fadeIn()) togetherWith
+                        (androidx.compose.animation.slideOutHorizontally(spec) { w -> -w * d } + fadeOut())
+                },
+                label = "homePage",
+            ) { pageId ->
+            val pageBlocks = home.pages.firstOrNull { it.id == pageId }?.blocks ?: home.blocks
+            val visibleBlocks = pageBlocks.filter { it.visible || editMode }
+            val topBlocks = visibleBlocks.filter { it.pin == BlockPin.Top }
+            val middleBlocks = visibleBlocks.filter { it.pin == BlockPin.None }
+            val bottomBlocks = visibleBlocks.filter { it.pin == BlockPin.Bottom }
+            Column(Modifier.fillMaxSize()) {
             val pad = Modifier.padding(horizontal = home.sidePaddingDp.dp)
             val spacing = Arrangement.spacedBy(home.blockSpacingDp.dp)
             // Pinned to the top: never scrolls.
@@ -258,9 +293,9 @@ fun HomeScreen() {
                                     NexusButton("Add widget", icon = Icons.Filled.Widgets, accent = Nx.Magenta) { editing = HomeEdit.AddWidget }
                                 }
                             }
-                            if (home.blocks.isEmpty() && !editMode) {
+                            if (pageBlocks.isEmpty() && !editMode) {
                                 Text(
-                                    "Long-press to add things to your home screen",
+                                    if (pageId == null) "Long-press to add things to your home screen" else "Blank page · long-press to start building it",
                                     style = MaterialTheme.typography.bodyMedium, color = Nx.Muted,
                                 )
                             }
@@ -272,8 +307,13 @@ fun HomeScreen() {
             if (bottomBlocks.isNotEmpty()) {
                 Column(pad.padding(top = home.blockSpacingDp.dp / 2), verticalArrangement = spacing) { Blocks(bottomBlocks) }
             }
+            }
+            }
 
-            if (home.dock.visible || editMode) {
+            if (home.showPageDots && home.pages.isNotEmpty()) {
+                PageDots(listOf<String?>(null) + home.pages.map { it.id }, pager.current) { pager.go(it ?: "main") }
+            }
+            if ((home.dock.visible && currentPage?.showDock != false) || editMode) {
                 Dock(
                     config = home.dock,
                     runner = runner,
@@ -319,17 +359,21 @@ fun HomeScreen() {
 
 /** Which Tiles block (or the dock, null) a tile lives in. */
 private fun findTileOwner(tileId: String): String? =
-    LookState.look.home.blocks.filterIsInstance<HomeBlock.Tiles>().firstOrNull { b -> b.tiles.any { it.id == tileId } }?.id
+    LookState.look.allBlocks.filterIsInstance<HomeBlock.Tiles>().firstOrNull { b -> b.tiles.any { it.id == tileId } }?.id
 
 @Composable
-private fun EditBar(onDone: () -> Unit, onAddBlock: () -> Unit, onAddWidget: () -> Unit, onCustomise: () -> Unit) {
+private fun EditBar(pageName: String?, onDone: () -> Unit, onAddBlock: () -> Unit, onAddWidget: () -> Unit, onPages: () -> Unit, onCustomise: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp).holoPanel(Nx.Amber).padding(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(hud("Editing home"), style = MaterialTheme.typography.labelMedium, color = Nx.Amber, modifier = Modifier.weight(1f))
+        Text(
+            hud(if (pageName == null) "Editing home" else "Editing · $pageName"), style = MaterialTheme.typography.labelMedium, color = Nx.Amber,
+            modifier = Modifier.weight(1f), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+        )
         EditIcon(Icons.Filled.Add, "Add block", onAddBlock)
         EditIcon(Icons.Filled.Widgets, "Add widget", onAddWidget)
+        EditIcon(Icons.Filled.ViewCarousel, "Pages", onPages)
         EditIcon(Icons.Filled.Palette, "Customise", onCustomise)
         EditIcon(Icons.Filled.Check, "Done", onDone, Nx.Lime)
     }
@@ -397,3 +441,21 @@ private fun BlockFrame(
 
 /** Kept so call sites that only know a tile can still tell what it does. */
 fun TileConfig.isFolder(): Boolean = action.kind == TileAction.Kind.Folder
+
+
+/** Dots for the home pages; tap one to jump there. */
+@Composable
+private fun PageDots(order: List<String?>, current: String?, onPick: (String?) -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.Center) {
+        order.forEach { id ->
+            val on = id == current
+            val w by androidx.compose.animation.core.animateDpAsState(if (on) 18.dp else 6.dp, label = "dot")
+            Box(
+                Modifier.padding(horizontal = 3.dp).size(width = w, height = 6.dp)
+                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(3.dp))
+                    .background(if (on) Nx.Cyan else Nx.Muted.copy(alpha = 0.5f))
+                    .nexusPress({ onPick(id) }),
+            )
+        }
+    }
+}
