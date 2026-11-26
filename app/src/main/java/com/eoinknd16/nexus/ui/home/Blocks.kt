@@ -86,6 +86,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.eoinknd16.nexus.look.Align
 import com.eoinknd16.nexus.look.DockConfig
+import com.eoinknd16.nexus.look.DockArrange
 import com.eoinknd16.nexus.look.HomeBlock
 import com.eoinknd16.nexus.look.IconCatalog
 import com.eoinknd16.nexus.look.LookState
@@ -511,7 +512,12 @@ fun TileIcon(tile: TileConfig, runner: TileRunner, accent: Color, size: androidx
                 if (icons.isEmpty()) Icon(IconCatalog.icon(tile.icon), null, tint = accent, modifier = Modifier.align(Alignment.Center))
             }
         }
-        runner.appIcon(tile) != null -> Image(runner.appIcon(tile)!!, null, Modifier.size(size))
+        // Look the icon up in the collected list (not a one-off snapshot) so
+        // tray/tile icons appear as soon as the app list finishes loading after
+        // an update or cold start.
+        tile.action.kind == com.eoinknd16.nexus.look.TileAction.Kind.LaunchApp && tile.useAppIcon &&
+            apps.firstOrNull { it.key == tile.action.arg }?.icon != null ->
+            Image(apps.first { it.key == tile.action.arg }.icon!!, null, Modifier.size(size))
         else -> Box(
             Modifier.size(size).clip(shape).background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(accent.copy(alpha = 0.35f), accent.copy(alpha = 0.05f)))),
             contentAlignment = Alignment.Center,
@@ -631,27 +637,61 @@ fun Dock(
 ) {
     val c = appContainer()
     val size = config.iconSizeDp.coerceIn(28f, 80f).dp
+    val slotW = if (config.showLabels) size + 16.dp else size
+    val gap = config.spacingDp.coerceIn(0f, 48f).dp
     val outer = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)
     val inner = if (config.framed) outer.holoPanel(glow = 0.1f).padding(horizontal = 12.dp, vertical = 10.dp) else outer
-    Row(inner, verticalAlignment = Alignment.CenterVertically) {
-        Row(
-            Modifier.weight(1f).then(if (config.scrollable) Modifier.horizontalScrollCompat() else Modifier),
-            horizontalArrangement = if (config.scrollable) Arrangement.spacedBy(14.dp) else Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            config.items.forEach { tile ->
-                DockSlot(
-                    tile = tile, runner = runner, size = size, showLabel = config.showLabels,
-                    onOpenFolder = onOpenFolder,
-                    onEdit = { onEditSlot(tile) },
-                    onMove = { d -> c.editLook { it.moveTile(null, tile.id, d) } },
-                    onRemove = { c.editLook { it.removeTile(null, tile.id) } },
-                )
-            }
-            if (editMode || config.items.isEmpty()) {
+    val sideButtons = (if (editMode) 1 else 0) + (if (config.showDrawerButton) 1 else 0)
+    val slots: @Composable (Modifier) -> Unit = { m ->
+        config.items.forEach { tile ->
+            DockSlot(
+                tile = tile, runner = runner, size = size, showLabel = config.showLabels,
+                modifier = m,
+                onOpenFolder = onOpenFolder,
+                onEdit = { onEditSlot(tile) },
+                onMove = { d -> c.editLook { it.moveTile(null, tile.id, d) } },
+                onRemove = { c.editLook { it.removeTile(null, tile.id) } },
+            )
+        }
+        if (editMode || config.items.isEmpty()) {
+            Box(m, contentAlignment = Alignment.Center) {
                 Box(Modifier.size(size).nexusPress(onAddSlot).clip(nexusShape(0.5f)).border(1.dp, Nx.CyanDim, nexusShape(0.5f)), contentAlignment = Alignment.Center) {
                     Icon(Icons.Filled.Add, "Add to tray", tint = Nx.Cyan)
                 }
+            }
+        }
+    }
+    Row(inner, verticalAlignment = Alignment.CenterVertically) {
+        // Balance the drawer/settings buttons on the right with matching empty
+        // space on the left, so the apps are centred on the whole tray.
+        val balance = config.centerOnTray && sideButtons > 0 && config.arrange != DockArrange.Start && config.arrange != DockArrange.End
+        if (balance) Spacer(Modifier.width((size + 8.dp) * sideButtons))
+        BoxWithConstraints(Modifier.weight(1f)) {
+            val count = config.items.size + if (editMode || config.items.isEmpty()) 1 else 0
+            val needed = slotW * count + gap * (count - 1).coerceAtLeast(0)
+            val overflow = needed > maxWidth
+            val slotMod = if (config.equalSlots) Modifier.width(slotW) else Modifier
+            if (overflow && config.scrollable) {
+                Row(
+                    Modifier.fillMaxWidth().horizontalScrollCompat(),
+                    horizontalArrangement = Arrangement.spacedBy(gap),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) { slots(slotMod) }
+            } else if (config.arrange == DockArrange.Even || overflow) {
+                // Equal cells across the width: perfectly even spacing.
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    slots(if (config.equalSlots) Modifier.weight(1f) else Modifier.weight(1f, fill = false))
+                }
+            } else {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = when (config.arrange) {
+                        DockArrange.Center -> Arrangement.spacedBy(gap, Alignment.CenterHorizontally)
+                        DockArrange.End -> Arrangement.spacedBy(gap, Alignment.End)
+                        else -> Arrangement.spacedBy(gap, Alignment.Start)
+                    },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) { slots(slotMod) }
             }
         }
         if (editMode) {
@@ -676,6 +716,7 @@ private fun DockSlot(
     runner: TileRunner,
     size: androidx.compose.ui.unit.Dp,
     showLabel: Boolean,
+    modifier: Modifier = Modifier,
     onOpenFolder: (TileConfig, Offset) -> Unit,
     onEdit: () -> Unit,
     onMove: (Int) -> Unit,
@@ -685,7 +726,7 @@ private fun DockSlot(
     var center by remember { mutableStateOf(Offset.Zero) }
     var bounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
     val accent = LookState.palette.slot(tile.color)
-    Box {
+    Box(modifier, contentAlignment = Alignment.Center) {
         Column(
             Modifier
                 .onGloballyPositioned {
@@ -696,7 +737,7 @@ private fun DockSlot(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             TileIcon(tile, runner, accent, size)
-            if (showLabel) Text(tile.label, style = MaterialTheme.typography.labelSmall, color = Nx.Text, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.width(size + 12.dp), textAlign = TextAlign.Center)
+            if (showLabel) Text(tile.label, style = MaterialTheme.typography.labelSmall, color = Nx.Text, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.width(size + 16.dp), textAlign = TextAlign.Center)
         }
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, containerColor = Nx.PanelSolid) {
             DropdownMenuItem(text = { Text("Edit") }, onClick = { menu = false; onEdit() })

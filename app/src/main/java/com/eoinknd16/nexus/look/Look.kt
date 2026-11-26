@@ -481,7 +481,17 @@ data class DockConfig(
     val framed: Boolean = true,
     /** Scroll sideways when there are more slots than fit, instead of shrinking. */
     val scrollable: Boolean = true,
+    /** How the slots sit in the tray when they don't fill it. */
+    val arrange: DockArrange = DockArrange.Even,
+    /** Every slot gets the same width, so icons line up evenly. */
+    val equalSlots: Boolean = true,
+    /** Centre the apps across the whole tray, not just the space left of the drawer button. */
+    val centerOnTray: Boolean = true,
+    val spacingDp: Float = 14f,
 )
+
+@Serializable
+enum class DockArrange(val label: String) { Even("Spread evenly"), Center("Centre"), Start("Left"), End("Right") }
 
 /**
  * How the scrolling middle of home handles being a bit too tall for the screen.

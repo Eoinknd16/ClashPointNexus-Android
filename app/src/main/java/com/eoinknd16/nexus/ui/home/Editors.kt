@@ -523,7 +523,11 @@ private fun DockEditor(onDismiss: () -> Unit, onEdit: (HomeEdit) -> Unit) {
         ToggleRow("App drawer button", d.showDrawerButton) { v -> set { it.copy(showDrawerButton = v) } }
         ToggleRow("Labels under icons", d.showLabels) { v -> set { it.copy(showLabels = v) } }
         ToggleRow("Panel behind it", d.framed) { v -> set { it.copy(framed = v) } }
-        ToggleRow("Scroll when full (off = spread evenly)", d.scrollable) { v -> set { it.copy(scrollable = v) } }
+        ChoiceRow("Line up apps", com.eoinknd16.nexus.look.DockArrange.entries, d.arrange, { it.label }) { v -> set { it.copy(arrange = v) } }
+        ToggleRow("Equal-width slots", d.equalSlots, "Every icon gets the same space so they line up evenly") { v -> set { it.copy(equalSlots = v) } }
+        ToggleRow("Centre on the whole tray", d.centerOnTray, "Ignore the drawer button when centring") { v -> set { it.copy(centerOnTray = v) } }
+        SliderRow("Gap between apps", d.spacingDp, 0f..48f, { "${it.roundToInt()}dp" }) { v -> set { it.copy(spacingDp = v) } }
+        ToggleRow("Scroll when full", d.scrollable, "Off squeezes every app into one row") { v -> set { it.copy(scrollable = v) } }
         SliderRow("Icon size", d.iconSizeDp, 28f..80f, { "${it.roundToInt()}dp" }) { v -> set { it.copy(iconSizeDp = v) } }
         HudLabel("Slots")
         d.items.forEachIndexed { i, t ->
