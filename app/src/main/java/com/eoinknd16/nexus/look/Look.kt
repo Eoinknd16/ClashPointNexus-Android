@@ -567,6 +567,10 @@ data class HomeLayout(
     val pages: List<HomePage> = emptyList(),
     /** Little dots above the tray showing which page you're on. */
     val showPageDots: Boolean = true,
+    /** Blur of the page where it slides under the tray (dp; 0 = off; Android 12+). */
+    val trayBlurDp: Float = 18f,
+    /** Fade the page out under the tray and off the bottom of the screen. */
+    val trayFade: Boolean = true,
     /** Per-block width / alignment / scale, by block id. */
     val blockSizes: Map<String, BlockSize> = emptyMap(),
 ) {
