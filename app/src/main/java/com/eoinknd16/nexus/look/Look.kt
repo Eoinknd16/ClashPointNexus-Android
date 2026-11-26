@@ -16,6 +16,7 @@ import java.util.UUID
 @Serializable
 data class Look(
     val presetName: String = "Nexus",
+    val gestures: Gestures = Gestures(),
     val palette: Palette = Palette(),
     val fonts: Fonts = Fonts(),
     val shape: ShapeStyle = ShapeStyle(),
@@ -67,15 +68,27 @@ data class Fonts(
 enum class CornerStyle(val label: String) { Cut("Angled cut"), Round("Rounded"), Square("Square"), Pill("Pill") }
 
 @Serializable
+enum class BorderStyle(val label: String) {
+    Gradient("Gradient"), Solid("Solid"), Neon("Neon (animated)"), Double("Double line"), Dashed("Dashed"), Glow("Soft glow only"), None("No border"),
+}
+
+@Serializable
 data class ShapeStyle(
     val corners: CornerStyle = CornerStyle.Cut,
+    val borderStyle: BorderStyle = BorderStyle.Gradient,
+    /** Palette slot or #hex for the rim; "accent" by default. */
+    val borderColor: String = "accent",
+    /** Outer glow spread in dp (0 = none). */
+    val glowRadius: Float = 0f,
+    /** Seconds per rotation of the animated neon rim. */
+    val neonSpeed: Float = 4f,
     /** Corner size in dp. */
     val cornerSize: Float = 14f,
     val borderWidth: Float = 1f,
     /** 0..1 rim + bracket glow strength. */
     val glow: Float = 0.35f,
     val brackets: Boolean = true,
-    /** Gradient (accent -> accent2) rim vs single-colour rim. */
+    /** Legacy (pre-borderStyle) setting; kept so old configs load. */
     val gradientBorder: Boolean = true,
 )
 
@@ -97,6 +110,15 @@ data class Backdrop(
 )
 
 @Serializable
+enum class ScreenTransition(val label: String) { Fade("Fade"), Scale("Zoom"), Slide("Slide"), Rise("Rise"), Warp("Warp"), None("Instant") }
+
+@Serializable
+enum class Entrance(val label: String) { None("None"), Fade("Fade in"), Rise("Rise up"), Pop("Pop"), Cascade("Cascade"), Flip("Flip") }
+
+@Serializable
+enum class AppLaunch(val label: String) { Zoom("Zoom from icon"), Reveal("Circular reveal"), Fade("Fade"), System("Android default") }
+
+@Serializable
 data class Motion(
     val animations: Boolean = true,
     /** Scale a tile shrinks to while pressed (1 = no shrink). */
@@ -104,6 +126,15 @@ data class Motion(
     val haptics: Boolean = true,
     /** Slow glow pulse on tiles. */
     val pulse: Boolean = true,
+    /** Multiplies every animation's speed (2 = twice as fast). */
+    val speed: Float = 1f,
+    /** 0 = stiff and snappy, 1 = loose and bouncy. */
+    val bounce: Float = 0.45f,
+    val screenTransition: ScreenTransition = ScreenTransition.Scale,
+    val tileEntrance: Entrance = Entrance.Cascade,
+    val appLaunch: AppLaunch = AppLaunch.Zoom,
+    /** Haptic strength for gestures: light tick vs heavy thud. */
+    val strongHaptics: Boolean = false,
 )
 
 // ---- Home layout ---------------------------------------------------------------
@@ -117,16 +148,25 @@ enum class Align { Start, Center, End }
  * One thing on the home screen. The home screen is just an ordered list of
  * these -- add, remove, reorder and configure any of them from edit mode.
  */
+/** Pinned blocks stay fixed on screen; only the unpinned middle scrolls. */
+@Serializable
+enum class BlockPin(val label: String) { None("Scrolls"), Top("Pinned top"), Bottom("Pinned bottom") }
+
 @Serializable
 sealed class HomeBlock {
     abstract val id: String
     abstract val visible: Boolean
+    abstract val pin: BlockPin
+    /** Locked = can't be moved, removed or reconfigured until unlocked. */
+    abstract val locked: Boolean
 
     @Serializable
     @SerialName("clock")
     data class Clock(
         override val id: String = newId(),
         override val visible: Boolean = true,
+        override val pin: BlockPin = BlockPin.None,
+        override val locked: Boolean = false,
         val use24h: Boolean = true,
         val showSeconds: Boolean = false,
         val showDate: Boolean = true,
@@ -144,6 +184,8 @@ sealed class HomeBlock {
     data class Weather(
         override val id: String = newId(),
         override val visible: Boolean = true,
+        override val pin: BlockPin = BlockPin.None,
+        override val locked: Boolean = false,
         val forecastDays: Int = 4,
         val showDetails: Boolean = true,
     ) : HomeBlock()
@@ -153,6 +195,8 @@ sealed class HomeBlock {
     data class SearchBar(
         override val id: String = newId(),
         override val visible: Boolean = true,
+        override val pin: BlockPin = BlockPin.None,
+        override val locked: Boolean = false,
         val engine: SearchEngine = SearchEngine.Google,
         /** For [SearchEngine.Custom]: %s is replaced with the query. */
         val customUrl: String = "https://www.google.com/search?q=%s",
@@ -167,6 +211,8 @@ sealed class HomeBlock {
     data class Tiles(
         override val id: String = newId(),
         override val visible: Boolean = true,
+        override val pin: BlockPin = BlockPin.None,
+        override val locked: Boolean = false,
         val title: String = "Command deck",
         val columns: Int = 2,
         val aspect: Float = 1.05f,
@@ -179,6 +225,8 @@ sealed class HomeBlock {
     data class Resume(
         override val id: String = newId(),
         override val visible: Boolean = true,
+        override val pin: BlockPin = BlockPin.None,
+        override val locked: Boolean = false,
         val title: String = "Resume",
     ) : HomeBlock()
 
@@ -187,6 +235,8 @@ sealed class HomeBlock {
     data class Posters(
         override val id: String = newId(),
         override val visible: Boolean = true,
+        override val pin: BlockPin = BlockPin.None,
+        override val locked: Boolean = false,
         val title: String = "Recently watched",
         val source: PosterSource = PosterSource.Recent,
         val count: Int = 15,
@@ -197,6 +247,8 @@ sealed class HomeBlock {
     data class AppRow(
         override val id: String = newId(),
         override val visible: Boolean = true,
+        override val pin: BlockPin = BlockPin.None,
+        override val locked: Boolean = false,
         val title: String = "Apps",
         /** Launcher component keys. */
         val apps: List<String> = emptyList(),
@@ -210,6 +262,8 @@ sealed class HomeBlock {
     data class Widget(
         override val id: String = newId(),
         override val visible: Boolean = true,
+        override val pin: BlockPin = BlockPin.None,
+        override val locked: Boolean = false,
         val appWidgetId: Int,
         val label: String = "Widget",
         val heightDp: Float = 120f,
@@ -222,6 +276,8 @@ sealed class HomeBlock {
     data class Text(
         override val id: String = newId(),
         override val visible: Boolean = true,
+        override val pin: BlockPin = BlockPin.None,
+        override val locked: Boolean = false,
         val text: String = "Welcome back",
         val sizeSp: Float = 20f,
         val align: Align = Align.Start,
@@ -233,6 +289,8 @@ sealed class HomeBlock {
     data class Spacer(
         override val id: String = newId(),
         override val visible: Boolean = true,
+        override val pin: BlockPin = BlockPin.None,
+        override val locked: Boolean = false,
         val heightDp: Float = 24f,
     ) : HomeBlock()
 
@@ -250,17 +308,21 @@ sealed class HomeBlock {
             is Spacer -> "Spacer"
         }
 
-    fun withVisible(v: Boolean): HomeBlock = when (this) {
-        is Clock -> copy(visible = v)
-        is Weather -> copy(visible = v)
-        is SearchBar -> copy(visible = v)
-        is Tiles -> copy(visible = v)
-        is Resume -> copy(visible = v)
-        is Posters -> copy(visible = v)
-        is AppRow -> copy(visible = v)
-        is Widget -> copy(visible = v)
-        is Text -> copy(visible = v)
-        is Spacer -> copy(visible = v)
+    fun withVisible(v: Boolean): HomeBlock = copyMeta(visible = v)
+    fun withPin(p: BlockPin): HomeBlock = copyMeta(pin = p)
+    fun withLocked(l: Boolean): HomeBlock = copyMeta(locked = l)
+
+    private fun copyMeta(visible: Boolean = this.visible, pin: BlockPin = this.pin, locked: Boolean = this.locked): HomeBlock = when (this) {
+        is Clock -> copy(visible = visible, pin = pin, locked = locked)
+        is Weather -> copy(visible = visible, pin = pin, locked = locked)
+        is SearchBar -> copy(visible = visible, pin = pin, locked = locked)
+        is Tiles -> copy(visible = visible, pin = pin, locked = locked)
+        is Resume -> copy(visible = visible, pin = pin, locked = locked)
+        is Posters -> copy(visible = visible, pin = pin, locked = locked)
+        is AppRow -> copy(visible = visible, pin = pin, locked = locked)
+        is Widget -> copy(visible = visible, pin = pin, locked = locked)
+        is Text -> copy(visible = visible, pin = pin, locked = locked)
+        is Spacer -> copy(visible = visible, pin = pin, locked = locked)
     }
 }
 
@@ -277,6 +339,43 @@ enum class SearchEngine(val label: String, val url: String) {
 @Serializable
 enum class PosterSource(val label: String) { Recent("Recently watched"), Library("Your library") }
 
+/** Where on screen a swipe has to start for it to count. */
+@Serializable
+enum class GestureZone(val label: String) {
+    Edge("From the matching edge"), Anywhere("Anywhere"),
+}
+
+@Serializable
+data class GestureBinding(
+    val action: TileAction = TileAction(TileAction.Kind.None),
+    val zone: GestureZone = GestureZone.Edge,
+)
+
+/**
+ * Home-screen gestures. A swipe only counts if it starts in its zone (by
+ * default: the bottom edge for up, the top edge for down, the side edges for
+ * left/right), travels far enough and fast enough in one clear direction --
+ * so scrolling the middle of the screen never sets one off by accident.
+ */
+@Serializable
+data class Gestures(
+    val swipeUp: GestureBinding = GestureBinding(TileAction(TileAction.Kind.Screen, "apps")),
+    val swipeDown: GestureBinding = GestureBinding(TileAction(TileAction.Kind.Notifications)),
+    // Off by default: Android's own back gesture owns the side edges, and
+    // sideways swipes elsewhere would fight the scrolling rows.
+    val swipeLeft: GestureBinding = GestureBinding(TileAction(TileAction.Kind.None), GestureZone.Anywhere),
+    val swipeRight: GestureBinding = GestureBinding(TileAction(TileAction.Kind.None), GestureZone.Anywhere),
+    val twoFingerUp: GestureBinding = GestureBinding(TileAction(TileAction.Kind.Screen, "customize"), GestureZone.Anywhere),
+    val twoFingerDown: GestureBinding = GestureBinding(TileAction(TileAction.Kind.QuickSettings), GestureZone.Anywhere),
+    val doubleTap: TileAction = TileAction(TileAction.Kind.LockScreen),
+    /** How deep the edge zones are, as a fraction of screen height/width. */
+    val edgeSize: Float = 0.2f,
+    /** Minimum swipe length in dp. */
+    val minDistanceDp: Float = 70f,
+    /** Show the zones while editing home. */
+    val showZonesInEditMode: Boolean = true,
+)
+
 /** What a tile does when tapped. [kind] + [arg] keeps the JSON simple and hand-editable. */
 @Serializable
 data class TileAction(val kind: Kind, val arg: String = "") {
@@ -292,6 +391,9 @@ data class TileAction(val kind: Kind, val arg: String = "") {
         Settings("Android setting"),
         Folder("Folder of apps"),
         Notifications("Pull down notifications"),
+        QuickSettings("Open quick settings"),
+        LockScreen("Lock the screen"),
+        Recents("Recent apps"),
         None("Nothing"),
     }
 }
@@ -323,6 +425,21 @@ data class TileConfig(
     val folderStyle: FolderStyle = FolderStyle.Grid,
     /** Folder tiles show a mini preview of the first apps' icons. */
     val folderPreview: Boolean = true,
+    /** Locked = long-press won't open the editor (unlock from home edit mode). */
+    val locked: Boolean = false,
+    /** Per-tile border look; null fields fall back to Customise › Panels. */
+    val border: BorderOverride? = null,
+    /** Per-tile entrance animation; null = Customise › Motion. */
+    val entrance: Entrance? = null,
+)
+
+@Serializable
+data class BorderOverride(
+    val style: BorderStyle? = null,
+    val width: Float? = null,
+    /** Palette slot or #hex. */
+    val color: String? = null,
+    val glow: Float? = null,
 )
 
 /**
@@ -347,8 +464,6 @@ data class DockConfig(
 data class HomeLayout(
     val blocks: List<HomeBlock> = emptyList(),
     val dock: DockConfig = DockConfig(),
-    val swipeUpForApps: Boolean = true,
-    val swipeDownForNotifications: Boolean = true,
     val sidePaddingDp: Float = 20f,
     val blockSpacingDp: Float = 22f,
     /** Show "// LABEL" headings above blocks that have titles. */

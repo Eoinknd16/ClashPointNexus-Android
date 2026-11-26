@@ -96,9 +96,10 @@ class AppsRepository(
             .sortedBy { it.label.lowercase() }
     }
 
-    fun launch(app: LaunchableApp) {
+    /** [bounds] = where the icon was on screen, for the opening animation. */
+    fun launch(app: LaunchableApp, bounds: android.graphics.Rect? = null, options: android.os.Bundle? = null) {
         runCatching {
-            launcherApps.startMainActivity(app.component, app.user, null, null)
+            launcherApps.startMainActivity(app.component, app.user, bounds, options)
         }.onFailure {
             context.packageManager.getLaunchIntentForPackage(app.packageName)
                 ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

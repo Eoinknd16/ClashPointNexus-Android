@@ -29,6 +29,12 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
+import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import com.eoinknd16.nexus.look.BlockPin
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Visibility
@@ -118,7 +124,8 @@ fun HomeScreen() {
             toast = null
         }
     }
-    val runner = remember { TileRunner(context, c, nav) { toast = it } }
+    val hostView = androidx.compose.ui.platform.LocalView.current
+    val runner = remember { TileRunner(context, c, nav, toast = { toast = it }, view = hostView) }
 
     // One-time: apps pinned from the drawer in v0.1 become dock slots.
     LaunchedEffect(apps, pins, home.dock.migratedPins) {
@@ -142,25 +149,54 @@ fun HomeScreen() {
         onPauseOrDispose { vm.stopPolling() }
     }
 
-    // Over-scroll past the top/bottom of home = the classic launcher swipes.
-    val swipes = remember(home.swipeUpForApps, home.swipeDownForNotifications) {
-        object : NestedScrollConnection {
-            var pull = 0f
-            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
-                if (source == NestedScrollSource.UserInput) pull += available.y
-                return Offset.Zero
-            }
+    val haptic = rememberGestureHaptic()
 
-            override suspend fun onPreFling(available: Velocity): Velocity {
-                if (pull < -140f && home.swipeUpForApps) nav.navigate(Routes.APPS)
-                else if (pull > 160f && home.swipeDownForNotifications) TileRunner.expandNotifications(context)
-                pull = 0f
-                return Velocity.Zero
+    val visibleBlocks = home.blocks.filter { it.visible || editMode }
+    val topBlocks = visibleBlocks.filter { it.pin == BlockPin.Top }
+    val middleBlocks = visibleBlocks.filter { it.pin == BlockPin.None }
+    val bottomBlocks = visibleBlocks.filter { it.pin == BlockPin.Bottom }
+
+    @Composable
+    fun Blocks(list: List<HomeBlock>) {
+        list.forEach { block ->
+            BlockFrame(
+                block = block,
+                editMode = editMode,
+                onUp = { c.editLook { it.moveBlock(block.id, -1) } },
+                onDown = { c.editLook { it.moveBlock(block.id, 1) } },
+                onToggle = { c.editLook { l -> l.updateBlock(block.id) { it.withVisible(!it.visible) } } },
+                onPin = { p -> c.editLook { l -> l.updateBlock(block.id) { it.withPin(p) } } },
+                onLock = { c.editLook { l -> l.updateBlock(block.id) { it.withLocked(!it.locked) } } },
+                onEdit = { editing = HomeEdit.Block(block.id) },
+                onRemove = {
+                    if (block is HomeBlock.Widget) c.widgets.delete(block.appWidgetId)
+                    c.editLook { it.removeBlock(block.id) }
+                },
+            ) {
+                BlockContent(
+                    block = block,
+                    vm = vm,
+                    runner = runner,
+                    editMode = editMode,
+                    onOpenFolder = { tile, origin -> folder = OpenFolder(tile, origin) },
+                    onEditTile = { tile ->
+                        if (tile.locked && !editMode) toast = "Locked · unlock it in edit mode"
+                        else editing = HomeEdit.Tile(block.id, tile)
+                    },
+                    onAddTile = { editing = HomeEdit.Tile(block.id, null) },
+                )
             }
         }
     }
 
-    NexusBackdrop {
+    NexusBackdrop(
+        Modifier.homeGestures(
+            gestures = look.gestures,
+            enabled = !editMode && folder == null,
+            onAction = { runner.runAction(it) },
+            onFired = haptic,
+        ),
+    ) {
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
             AnimatedVisibility(editMode, enter = slideInVertically() + fadeIn(), exit = slideOutVertically() + fadeOut()) {
                 EditBar(
@@ -170,42 +206,35 @@ fun HomeScreen() {
                     onCustomise = { nav.navigate(Routes.CUSTOMIZE) },
                 )
             }
+            val pad = Modifier.padding(horizontal = home.sidePaddingDp.dp)
+            val spacing = Arrangement.spacedBy(home.blockSpacingDp.dp)
+            // Pinned to the top: never scrolls.
+            if (topBlocks.isNotEmpty()) {
+                Column(pad.padding(top = 12.dp, bottom = home.blockSpacingDp.dp / 2), verticalArrangement = spacing) {
+                    com.eoinknd16.nexus.ui.update.UpdateBanner()
+                    Blocks(topBlocks)
+                }
+            }
             Column(
                 Modifier
                     .weight(1f)
-                    .nestedScroll(swipes)
                     .verticalScroll(rememberScrollState())
-                    // Long-press empty space = edit the home screen.
-                    .pointerInput(Unit) { detectTapGestures(onLongPress = { editMode = true }) }
-                    .padding(horizontal = home.sidePaddingDp.dp),
-                verticalArrangement = Arrangement.spacedBy(home.blockSpacingDp.dp),
-            ) {
-                Spacer(Modifier.height(12.dp))
-                com.eoinknd16.nexus.ui.update.UpdateBanner()
-                home.blocks.filter { it.visible || editMode }.forEach { block ->
-                    BlockFrame(
-                        block = block,
-                        editMode = editMode,
-                        onUp = { c.editLook { it.moveBlock(block.id, -1) } },
-                        onDown = { c.editLook { it.moveBlock(block.id, 1) } },
-                        onToggle = { c.editLook { l -> l.updateBlock(block.id) { it.withVisible(!it.visible) } } },
-                        onEdit = { editing = HomeEdit.Block(block.id) },
-                        onRemove = {
-                            if (block is HomeBlock.Widget) c.widgets.delete(block.appWidgetId)
-                            c.editLook { it.removeBlock(block.id) }
-                        },
-                    ) {
-                        BlockContent(
-                            block = block,
-                            vm = vm,
-                            runner = runner,
-                            editMode = editMode,
-                            onOpenFolder = { tile, origin -> folder = OpenFolder(tile, origin) },
-                            onEditTile = { tile -> editing = HomeEdit.Tile(block.id, tile) },
-                            onAddTile = { editing = HomeEdit.Tile(block.id, null) },
+                    // Long-press empty space = edit the home screen; double-tap = your double-tap action.
+                    .pointerInput(look.gestures.doubleTap) {
+                        detectTapGestures(
+                            onLongPress = { editMode = true },
+                            onDoubleTap = if (look.gestures.doubleTap.kind != TileAction.Kind.None) ({
+                                haptic()
+                                runner.runAction(look.gestures.doubleTap)
+                            }) else null,
                         )
                     }
-                }
+                    .then(pad),
+                verticalArrangement = spacing,
+            ) {
+                Spacer(Modifier.height(if (topBlocks.isEmpty()) 12.dp else 0.dp))
+                if (topBlocks.isEmpty()) com.eoinknd16.nexus.ui.update.UpdateBanner()
+                Blocks(middleBlocks)
                 if (editMode) {
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         NexusButton("Add block", icon = Icons.Filled.Add) { editing = HomeEdit.AddBlock }
@@ -219,6 +248,10 @@ fun HomeScreen() {
                     )
                 }
                 Spacer(Modifier.height(12.dp))
+            }
+            // Pinned to the bottom: sits just above the tray.
+            if (bottomBlocks.isNotEmpty()) {
+                Column(pad.padding(top = home.blockSpacingDp.dp / 2), verticalArrangement = spacing) { Blocks(bottomBlocks) }
             }
 
             if (home.dock.visible || editMode) {
@@ -234,6 +267,8 @@ fun HomeScreen() {
                 )
             }
         }
+
+        if (editMode && look.gestures.showZonesInEditMode) GestureZonesOverlay(look.gestures)
 
         folder?.let { f -> FolderOverlay(f, runner, onClose = { folder = null }, onEdit = { blockless ->
             folder = null
@@ -275,7 +310,7 @@ fun EditIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, label: Strin
     Box(Modifier.size(38.dp).nexusPress(onClick), contentAlignment = Alignment.Center) { Icon(icon, label, tint = tint) }
 }
 
-/** Wraps a block; in edit mode adds a toolbar (move, hide, settings, remove). */
+/** Wraps a block; in edit mode adds a toolbar (move, pin, lock, hide, settings, remove). */
 @Composable
 private fun BlockFrame(
     block: HomeBlock,
@@ -283,6 +318,8 @@ private fun BlockFrame(
     onUp: () -> Unit,
     onDown: () -> Unit,
     onToggle: () -> Unit,
+    onPin: (BlockPin) -> Unit,
+    onLock: () -> Unit,
     onEdit: () -> Unit,
     onRemove: () -> Unit,
     content: @Composable () -> Unit,
@@ -291,14 +328,37 @@ private fun BlockFrame(
         content()
         return
     }
-    Column(Modifier.fillMaxWidth().holoPanel(Nx.Amber, glow = 0.05f).padding(8.dp)) {
+    var pinMenu by remember { mutableStateOf(false) }
+    Column(Modifier.fillMaxWidth().holoPanel(if (block.locked) Nx.Muted else Nx.Amber, glow = 0.05f).padding(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(hud(block.kindLabel), style = MaterialTheme.typography.labelSmall, color = Nx.Amber, modifier = Modifier.weight(1f))
-            EditIcon(Icons.Filled.KeyboardArrowUp, "Move up", onUp)
-            EditIcon(Icons.Filled.KeyboardArrowDown, "Move down", onDown)
-            EditIcon(if (block.visible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff, "Show/hide", onToggle, if (block.visible) Nx.Cyan else Nx.Muted)
-            EditIcon(Icons.Filled.Settings, "Configure", onEdit)
-            EditIcon(Icons.Filled.Close, "Remove", onRemove, Nx.Danger)
+            Column(Modifier.weight(1f)) {
+                Text(hud(block.kindLabel), style = MaterialTheme.typography.labelSmall, color = if (block.locked) Nx.Muted else Nx.Amber)
+                if (block.pin != BlockPin.None || block.locked) {
+                    Text(
+                        hud(listOfNotNull(block.pin.takeIf { it != BlockPin.None }?.label, "Locked".takeIf { block.locked }).joinToString(" · ")),
+                        style = MaterialTheme.typography.labelSmall, color = Nx.Cyan,
+                    )
+                }
+            }
+            if (!block.locked) {
+                EditIcon(Icons.Filled.KeyboardArrowUp, "Move up", onUp)
+                EditIcon(Icons.Filled.KeyboardArrowDown, "Move down", onDown)
+                Box {
+                    EditIcon(Icons.Filled.PushPin, "Pin", { pinMenu = true }, if (block.pin != BlockPin.None) Nx.Cyan else Nx.Muted)
+                    DropdownMenu(expanded = pinMenu, onDismissRequest = { pinMenu = false }, containerColor = Nx.PanelSolid) {
+                        BlockPin.entries.forEach { p ->
+                            DropdownMenuItem(
+                                text = { Text(p.label + if (p == BlockPin.None) "" else " (stays on screen)", color = if (p == block.pin) Nx.Cyan else Nx.Text) },
+                                onClick = { pinMenu = false; onPin(p) },
+                            )
+                        }
+                    }
+                }
+                EditIcon(if (block.visible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff, "Show/hide", onToggle, if (block.visible) Nx.Cyan else Nx.Muted)
+                EditIcon(Icons.Filled.Settings, "Configure", onEdit)
+            }
+            EditIcon(if (block.locked) Icons.Filled.Lock else Icons.Filled.LockOpen, if (block.locked) "Unlock" else "Lock", onLock, if (block.locked) Nx.Amber else Nx.Muted)
+            if (!block.locked) EditIcon(Icons.Filled.Close, "Remove", onRemove, Nx.Danger)
         }
         Spacer(Modifier.height(6.dp))
         Box(Modifier.fillMaxWidth().then(if (block.visible) Modifier else Modifier.background(Nx.Void.copy(alpha = 0.5f)))) { content() }

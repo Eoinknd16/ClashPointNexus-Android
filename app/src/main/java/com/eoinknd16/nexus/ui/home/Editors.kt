@@ -64,6 +64,7 @@ import com.eoinknd16.nexus.look.TileConfig
 import com.eoinknd16.nexus.look.addBlock
 import com.eoinknd16.nexus.look.addableBlocks
 import com.eoinknd16.nexus.look.moved
+import com.eoinknd16.nexus.look.toHex
 import com.eoinknd16.nexus.look.removeTile
 import com.eoinknd16.nexus.look.updateBlock
 import com.eoinknd16.nexus.look.updateDock
@@ -122,7 +123,7 @@ private fun BlockEditor(block: HomeBlock, onDismiss: () -> Unit, onEdit: (HomeEd
     val vm = com.eoinknd16.nexus.ui.nexusViewModel { HomeViewModel(it) }
     val context = LocalContext.current
     val nav = com.eoinknd16.nexus.ui.LocalNav.current
-    val runner = remember { TileRunner(context, c, nav) {} }
+    val runner = remember { TileRunner(context, c, nav, toast = {}) }
     EditorSheet(block.kindLabel, onDismiss) {
         // Live preview of this block with the settings below applied.
         if (block !is HomeBlock.Widget && block !is HomeBlock.Spacer) {
@@ -247,7 +248,7 @@ private fun TileEditor(blockId: String?, existing: TileConfig?, onDismiss: () ->
 
     val context = LocalContext.current
     val nav = com.eoinknd16.nexus.ui.LocalNav.current
-    val runner = remember { TileRunner(context, c, nav) {} }
+    val runner = remember { TileRunner(context, c, nav, toast = {}) }
     EditorSheet(if (existing == null) (if (blockId == null) "Add to tray" else "New tile") else "Edit · ${existing.label}", onDismiss) {
         // Live preview: exactly how the tile (or tray slot) will look.
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
@@ -352,6 +353,23 @@ private fun TileEditor(blockId: String?, existing: TileConfig?, onDismiss: () ->
                 }
             }
         }
+        ToggleRow("Lock this tile", t.locked, "Long-press won't open the editor (except in home edit mode)") { t = t.copy(locked = it) }
+        val inheritE = "inherit"
+        ChoiceRow(
+            "Entrance animation", listOf(inheritE) + com.eoinknd16.nexus.look.Entrance.entries.map { it.name },
+            t.entrance?.name ?: inheritE, { if (it == inheritE) "Same as everywhere" else com.eoinknd16.nexus.look.Entrance.valueOf(it).label },
+        ) { v -> t = t.copy(entrance = if (v == inheritE) null else com.eoinknd16.nexus.look.Entrance.valueOf(v)) }
+        HudLabel("Border (this tile only)")
+        val b = t.border ?: com.eoinknd16.nexus.look.BorderOverride()
+        ChoiceRow(
+            "Style", listOf(inheritE) + com.eoinknd16.nexus.look.BorderStyle.entries.map { it.name },
+            b.style?.name ?: inheritE, { if (it == inheritE) "Same as everywhere" else com.eoinknd16.nexus.look.BorderStyle.valueOf(it).label },
+        ) { v -> t = t.copy(border = b.copy(style = if (v == inheritE) null else com.eoinknd16.nexus.look.BorderStyle.valueOf(v))) }
+        SliderRow("Width", b.width ?: LookState.look.shape.borderWidth, 0f..5f, { "%.1fdp".format(it) }) { v -> t = t.copy(border = b.copy(width = v)) }
+        SliderRow("Glow", b.glow ?: LookState.look.shape.glow, 0f..1.5f, { "${(it * 100).toInt()}%" }) { v -> t = t.copy(border = b.copy(glow = v)) }
+        ColorRow("Border colour", b.color?.takeIf { it.startsWith("#") } ?: LookState.palette.slot(t.color).toHex()) { v -> t = t.copy(border = b.copy(color = v)) }
+        if (t.border != null) NexusButton("Reset border to default", accent = Nx.Muted) { t = t.copy(border = null) }
+        Spacer(Modifier.height(8.dp))
         TextRow("Background image URL (optional)", t.image ?: "", "https://…/image.jpg", KeyboardType.Uri) { t = t.copy(image = it.ifBlank { null }) }
 
         Spacer(Modifier.height(16.dp))
@@ -373,6 +391,10 @@ private fun defaultIcon(kind: TileAction.Kind, current: String): String = when (
     TileAction.Kind.WebSearch -> "search"
     TileAction.Kind.Settings -> "settings"
     TileAction.Kind.Folder -> "apps"
+    TileAction.Kind.LockScreen -> "lock"
+    TileAction.Kind.QuickSettings -> "settings"
+    TileAction.Kind.Recents -> "apps"
+    TileAction.Kind.Notifications -> "mail"
     else -> current
 }
 

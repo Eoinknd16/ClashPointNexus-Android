@@ -5,7 +5,14 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
@@ -32,6 +39,33 @@ import com.eoinknd16.nexus.ui.tv.SearchScreen
 import com.eoinknd16.nexus.ui.tv.TvScreen
 import kotlinx.coroutines.flow.MutableSharedFlow
 
+/** Screen-change animations, from Customise › Motion › Screen transition. */
+object ScreenTransitions {
+    fun enter(t: com.eoinknd16.nexus.look.ScreenTransition, ms: Int, pop: Boolean): EnterTransition {
+        val spec = tween<Float>(ms)
+        return when (t) {
+            com.eoinknd16.nexus.look.ScreenTransition.Fade -> fadeIn(spec)
+            com.eoinknd16.nexus.look.ScreenTransition.Scale -> fadeIn(spec) + scaleIn(spec, initialScale = if (pop) 1.04f else 0.94f)
+            com.eoinknd16.nexus.look.ScreenTransition.Slide -> fadeIn(spec) + slideInHorizontally(tween(ms)) { w -> if (pop) -w / 3 else w / 3 }
+            com.eoinknd16.nexus.look.ScreenTransition.Rise -> fadeIn(spec) + slideInVertically(tween(ms)) { h -> if (pop) -h / 6 else h / 6 }
+            com.eoinknd16.nexus.look.ScreenTransition.Warp -> fadeIn(tween(ms / 2, delayMillis = ms / 4)) + scaleIn(tween(ms), initialScale = if (pop) 1.4f else 0.6f)
+            com.eoinknd16.nexus.look.ScreenTransition.None -> EnterTransition.None
+        }
+    }
+
+    fun exit(t: com.eoinknd16.nexus.look.ScreenTransition, ms: Int, pop: Boolean): ExitTransition {
+        val spec = tween<Float>(ms)
+        return when (t) {
+            com.eoinknd16.nexus.look.ScreenTransition.Fade -> fadeOut(spec)
+            com.eoinknd16.nexus.look.ScreenTransition.Scale -> fadeOut(spec) + scaleOut(spec, targetScale = if (pop) 0.94f else 1.04f)
+            com.eoinknd16.nexus.look.ScreenTransition.Slide -> fadeOut(spec) + slideOutHorizontally(tween(ms)) { w -> if (pop) w / 3 else -w / 3 }
+            com.eoinknd16.nexus.look.ScreenTransition.Rise -> fadeOut(spec) + slideOutVertically(tween(ms)) { h -> if (pop) h / 6 else -h / 6 }
+            com.eoinknd16.nexus.look.ScreenTransition.Warp -> fadeOut(tween(ms / 2)) + scaleOut(tween(ms), targetScale = if (pop) 0.6f else 1.4f)
+            com.eoinknd16.nexus.look.ScreenTransition.None -> ExitTransition.None
+        }
+    }
+}
+
 class MainActivity : ComponentActivity() {
 
     /** Fires when the Home button is pressed while Nexus is already the
@@ -49,14 +83,18 @@ class MainActivity : ComponentActivity() {
                         nav.popBackStack(Routes.HOME, inclusive = false)
                     }
                 }
+                com.eoinknd16.nexus.ui.fx.NeonClockDriver()
+                val motion = com.eoinknd16.nexus.look.LookState.look.motion
+                val t = if (motion.animations) motion.screenTransition else com.eoinknd16.nexus.look.ScreenTransition.None
+                val ms = com.eoinknd16.nexus.ui.fx.nexusMs(320)
                 CompositionLocalProvider(LocalNav provides nav) {
                     NavHost(
                         navController = nav,
                         startDestination = Routes.HOME,
-                        enterTransition = { fadeIn() + scaleIn(initialScale = 0.96f) },
-                        exitTransition = { fadeOut() },
-                        popEnterTransition = { fadeIn() },
-                        popExitTransition = { fadeOut() + scaleOut(targetScale = 0.96f) },
+                        enterTransition = { ScreenTransitions.enter(t, ms, pop = false) },
+                        exitTransition = { ScreenTransitions.exit(t, ms, pop = false) },
+                        popEnterTransition = { ScreenTransitions.enter(t, ms, pop = true) },
+                        popExitTransition = { ScreenTransitions.exit(t, ms, pop = true) },
                     ) {
                         composable(Routes.HOME) { HomeScreen() }
                         composable(Routes.APPS) { AppDrawerScreen() }

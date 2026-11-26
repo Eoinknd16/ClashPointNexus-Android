@@ -1,6 +1,8 @@
 package com.eoinknd16.nexus.ui.home
 
+import android.accessibilityservice.AccessibilityService
 import android.annotation.SuppressLint
+import com.eoinknd16.nexus.core.NexusAccessibilityService
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -72,19 +74,33 @@ class TileRunner(
     private val c: AppContainer,
     private val nav: NavController,
     private val toast: (String) -> Unit,
+    /** The Compose host view, needed to anchor the app-opening animation. */
+    private val view: android.view.View? = null,
 ) {
-    fun launch(app: LaunchableApp) = c.apps.launch(app)
+    /** Opens an app with Customise › Motion › App opening animation, grown from [from] (root coords). */
+    fun launch(app: LaunchableApp, from: androidx.compose.ui.geometry.Rect? = null) {
+        val motion = LookState.look.motion
+        val r = from?.let { android.graphics.Rect(it.left.toInt(), it.top.toInt(), it.right.toInt(), it.bottom.toInt()) }
+        val v = view
+        val opts = if (!motion.animations || v == null) null else when (motion.appLaunch) {
+            com.eoinknd16.nexus.look.AppLaunch.Zoom -> r?.let { android.app.ActivityOptions.makeScaleUpAnimation(v, it.left, it.top, it.width(), it.height()) }
+            com.eoinknd16.nexus.look.AppLaunch.Reveal -> r?.let { android.app.ActivityOptions.makeClipRevealAnimation(v, it.left, it.top, it.width(), it.height()) }
+            com.eoinknd16.nexus.look.AppLaunch.Fade -> android.app.ActivityOptions.makeCustomAnimation(context, android.R.anim.fade_in, android.R.anim.fade_out)
+            com.eoinknd16.nexus.look.AppLaunch.System -> null
+        }
+        c.apps.launch(app, r, opts?.toBundle())
+    }
 
     fun app(key: String): LaunchableApp? = c.apps.apps.value.firstOrNull { it.key == key }
 
     fun appIcon(tile: TileConfig): ImageBitmap? =
         if (tile.action.kind == TileAction.Kind.LaunchApp && tile.useAppIcon) app(tile.action.arg)?.icon else null
 
-    fun run(tile: TileConfig) {
+    fun run(tile: TileConfig, from: androidx.compose.ui.geometry.Rect? = null) {
         val a = tile.action
         when (a.kind) {
             TileAction.Kind.Screen -> screenRoute(a.arg)?.let { nav.navigate(it) } ?: toast("Unknown screen")
-            TileAction.Kind.LaunchApp -> app(a.arg)?.let(c.apps::launch) ?: toast("App not installed")
+            TileAction.Kind.LaunchApp -> app(a.arg)?.let { launch(it, from) } ?: toast("App not installed")
             TileAction.Kind.WakePc -> c.scope.launch {
                 val cfg = c.pcStore.get()
                 if (cfg.macs.isEmpty()) {
@@ -105,8 +121,18 @@ class TileRunner(
             TileAction.Kind.WebSearch -> webSearch(a.arg)
             TileAction.Kind.Settings -> openSettings(a.arg)
             TileAction.Kind.Notifications -> expandNotifications(context)
+            TileAction.Kind.QuickSettings -> {
+                if (!NexusAccessibilityService.perform(AccessibilityService.GLOBAL_ACTION_QUICK_SETTINGS)) expandQuickSettings(context)
+            }
+            TileAction.Kind.LockScreen -> if (!NexusAccessibilityService.lockScreen()) needsAccessibility()
+            TileAction.Kind.Recents -> if (!NexusAccessibilityService.perform(AccessibilityService.GLOBAL_ACTION_RECENTS)) needsAccessibility()
             TileAction.Kind.Folder, TileAction.Kind.None -> {}
         }
+    }
+
+    private fun needsAccessibility() {
+        toast("Turn on \"Nexus gestures\" in Accessibility to use this")
+        NexusAccessibilityService.openSettings(context)
     }
 
     fun openUrl(url: String) {
@@ -148,6 +174,14 @@ class TileRunner(
 
     companion object {
         /** Pulls the notification shade down (needs EXPAND_STATUS_BAR, granted at install). */
+        @SuppressLint("WrongConstant")
+        fun expandQuickSettings(context: Context) {
+            runCatching {
+                val sbm = context.getSystemService("statusbar")
+                Class.forName("android.app.StatusBarManager").getMethod("expandSettingsPanel").invoke(sbm)
+            }
+        }
+
         @SuppressLint("WrongConstant")
         fun expandNotifications(context: Context) {
             runCatching {

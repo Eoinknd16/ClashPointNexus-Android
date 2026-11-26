@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Global actions only (lock screen, recents, quick settings): subscribes to
+     no events and can't read window content. -->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/accessibility_description"
+    android:accessibilityEventTypes="typeWindowStateChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:notificationTimeout="1000"
+    android:canRetrieveWindowContent="false"
+    android:packageNames="com.eoinknd16.nexus" />

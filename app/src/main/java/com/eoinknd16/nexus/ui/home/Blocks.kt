@@ -65,6 +65,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -410,9 +411,9 @@ private fun TilesGrid(
     val cols = b.columns.coerceIn(1, 6)
     val cells: List<TileConfig?> = b.tiles + if (editMode || b.tiles.isEmpty()) listOf(null) else emptyList()
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        cells.chunked(cols).forEach { row ->
+        cells.chunked(cols).forEachIndexed { r, row ->
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                row.forEach { tile ->
+                row.forEachIndexed { ci, tile ->
                     val mod = Modifier.weight(1f).aspectRatio(b.aspect.coerceIn(0.4f, 3f))
                     if (tile == null) {
                         AddCell(mod, onAddTile)
@@ -421,6 +422,7 @@ private fun TilesGrid(
                             tile = tile,
                             runner = runner,
                             showSublabel = b.showSublabels,
+                            index = r * cols + ci,
                             modifier = mod,
                             onOpenFolder = onOpenFolder,
                             onLongPress = { onEditTile(tile) },
@@ -454,9 +456,12 @@ fun TileView(
     modifier: Modifier,
     onOpenFolder: (TileConfig, Offset) -> Unit,
     onLongPress: () -> Unit,
+    index: Int = 0,
 ) {
     val accent = LookState.palette.slot(tile.color)
     var center by remember { mutableStateOf(Offset.Zero) }
+    var bounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
+    val entrance = entranceModifier(tile.entrance ?: LookState.look.motion.tileEntrance, index)
     val motion = LookState.look.motion
     val pulse = if (motion.pulse && motion.animations) {
         rememberInfiniteTransition(label = "pulse").animateFloat(
@@ -465,9 +470,13 @@ fun TileView(
     } else 0.35f
     Box(
         modifier
-            .onGloballyPositioned { center = it.boundsInRoot().center }
-            .nexusPress({ if (tile.isFolder()) onOpenFolder(tile, center) else runner.run(tile) }, onLongPress)
-            .holoPanel(accent, pulse),
+            .then(entrance)
+            .onGloballyPositioned {
+                bounds = it.boundsInRoot()
+                center = it.boundsInRoot().center
+            }
+            .nexusPress({ if (tile.isFolder()) onOpenFolder(tile, center) else runner.run(tile, bounds) }, onLongPress)
+            .holoPanel(accent, pulse, tile.border),
     ) {
         tile.image?.takeIf { it.isNotBlank() }?.let {
             AsyncImage(it, null, contentScale = ContentScale.Crop, modifier = Modifier.matchParentSize().alpha(0.45f))
@@ -674,12 +683,16 @@ private fun DockSlot(
 ) {
     var menu by remember { mutableStateOf(false) }
     var center by remember { mutableStateOf(Offset.Zero) }
+    var bounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
     val accent = LookState.palette.slot(tile.color)
     Box {
         Column(
             Modifier
-                .onGloballyPositioned { center = it.boundsInRoot().center }
-                .nexusPress({ if (tile.isFolder()) onOpenFolder(tile, center) else runner.run(tile) }, onLongClick = { menu = true }),
+                .onGloballyPositioned {
+                    bounds = it.boundsInRoot()
+                    center = it.boundsInRoot().center
+                }
+                .nexusPress({ if (tile.isFolder()) onOpenFolder(tile, center) else runner.run(tile, bounds) }, onLongClick = { menu = true }),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             TileIcon(tile, runner, accent, size)
@@ -696,3 +709,42 @@ private fun DockSlot(
 
 @Composable
 private fun Modifier.horizontalScrollCompat(): Modifier = this.horizontalScroll(rememberScrollState())
+
+
+/**
+ * Entrance animation for a tile when the home screen appears, staggered by
+ * its position for Cascade. Plays once per composition (i.e. each time home
+ * is opened), honouring Customise › Motion speed and the animations switch.
+ */
+@Composable
+fun entranceModifier(kind: com.eoinknd16.nexus.look.Entrance, index: Int): Modifier {
+    val motion = LookState.look.motion
+    if (!motion.animations || kind == com.eoinknd16.nexus.look.Entrance.None) return Modifier
+    val p = remember { androidx.compose.animation.core.Animatable(0f) }
+    LaunchedEffect(Unit) {
+        val stagger = if (kind == com.eoinknd16.nexus.look.Entrance.Cascade) index * 45L else 0L
+        delay((stagger / motion.speed.coerceIn(0.25f, 4f)).toLong())
+        p.animateTo(1f, com.eoinknd16.nexus.ui.fx.nexusSpring())
+    }
+    return Modifier.graphicsLayer {
+        val v = p.value
+        when (kind) {
+            com.eoinknd16.nexus.look.Entrance.Fade -> alpha = v.coerceIn(0f, 1f)
+            com.eoinknd16.nexus.look.Entrance.Rise, com.eoinknd16.nexus.look.Entrance.Cascade -> {
+                alpha = v.coerceIn(0f, 1f)
+                translationY = (1f - v) * 40.dp.toPx()
+            }
+            com.eoinknd16.nexus.look.Entrance.Pop -> {
+                alpha = v.coerceIn(0f, 1f)
+                scaleX = 0.6f + 0.4f * v
+                scaleY = 0.6f + 0.4f * v
+            }
+            com.eoinknd16.nexus.look.Entrance.Flip -> {
+                alpha = v.coerceIn(0f, 1f)
+                rotationX = (1f - v) * 80f
+                cameraDistance = 12 * density
+            }
+            com.eoinknd16.nexus.look.Entrance.None -> {}
+        }
+    }
+}

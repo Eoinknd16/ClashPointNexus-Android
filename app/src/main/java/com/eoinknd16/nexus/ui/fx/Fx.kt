@@ -60,6 +60,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.eoinknd16.nexus.look.BackdropStyle
+import com.eoinknd16.nexus.look.BorderOverride
+import com.eoinknd16.nexus.look.BorderStyle
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawOutline
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.translate
 import com.eoinknd16.nexus.look.CornerStyle
 import com.eoinknd16.nexus.look.LookState
 import com.eoinknd16.nexus.ui.theme.Nx
@@ -282,30 +289,109 @@ fun nexusShape(scale: Float = 1f): Shape {
 /** Kept for call sites that used the original constant. */
 val HoloShape: Shape get() = nexusShape()
 
-fun Modifier.holoPanel(accent: Color = Nx.Cyan, glow: Float = 0.35f): Modifier {
-    val s = LookState.look.shape
-    val shape = nexusShape()
-    val rim = if (s.gradientBorder) {
-        Brush.linearGradient(listOf(accent.copy(alpha = 0.9f), accent.copy(alpha = 0.15f), Nx.Magenta.copy(alpha = 0.5f)))
-    } else {
-        Brush.linearGradient(listOf(accent.copy(alpha = 0.6f), accent.copy(alpha = 0.6f)))
-    }
-    val strength = (glow * (s.glow / 0.35f)).coerceIn(0f, 1f)
-    var m = this.clip(shape).background(Brush.verticalGradient(listOf(Nx.Panel, Nx.Panel.copy(alpha = (Nx.Panel.alpha + 0.1f).coerceAtMost(1f)))))
-    if (s.borderWidth > 0f) m = m.border(s.borderWidth.dp, rim, shape)
-    if (s.brackets && s.glow > 0f) {
-        m = m.drawBehind {
-            val l = 14.dp.toPx()
-            val w = 2.dp.toPx()
-            val c = accent.copy(alpha = (0.4f + strength).coerceAtMost(1f))
-            drawLine(c, Offset(size.width - l * 1.6f, 0f), Offset(size.width, 0f), w, StrokeCap.Square)
-            drawLine(c, Offset(size.width, 0f), Offset(size.width, l), w, StrokeCap.Square)
-            drawLine(c, Offset(0f, size.height), Offset(l * 1.6f, size.height), w, StrokeCap.Square)
-            drawLine(c, Offset(0f, size.height - l), Offset(0f, size.height), w, StrokeCap.Square)
+/**
+ * One shared clock for animated borders, advanced by [NeonClockDriver] (once,
+ * at the app root) only while a neon style is in use. Panels read it in the
+ * draw phase, so it only redraws -- never recomposes -- the panels.
+ */
+object NeonClock {
+    var time by mutableFloatStateOf(0f)
+}
+
+@Composable
+fun NeonClockDriver() {
+    val look = LookState.look
+    val needed = look.motion.animations && (look.shape.borderStyle == BorderStyle.Neon ||
+        look.home.blocks.any { b -> b is com.eoinknd16.nexus.look.HomeBlock.Tiles && b.tiles.any { it.border?.style == BorderStyle.Neon } } ||
+        look.home.dock.items.any { it.border?.style == BorderStyle.Neon })
+    LaunchedEffect(needed, look.motion.speed) {
+        if (!needed) return@LaunchedEffect
+        var prev = withFrameNanos { it }
+        while (true) {
+            withFrameNanos { now ->
+                NeonClock.time += (now - prev) / 1_000_000_000f * look.motion.speed
+                prev = now
+            }
         }
     }
-    return m
 }
+
+/**
+ * The holo panel: translucent fill, configurable shape, and a rim in any of
+ * the border styles (Customise › Panels, or per tile via [override]).
+ * Glow is drawn before the clip so it can spill outside the panel.
+ */
+fun Modifier.holoPanel(accent: Color = Nx.Cyan, glow: Float = 0.35f, override: BorderOverride? = null): Modifier {
+    val s = LookState.look.shape
+    val p = LookState.palette
+    val shape = nexusShape()
+    val style = override?.style ?: if (!s.gradientBorder && s.borderStyle == BorderStyle.Gradient) BorderStyle.Solid else s.borderStyle
+    val width = (override?.width ?: s.borderWidth).coerceAtLeast(0f)
+    val rimColor = override?.color?.let { p.slot(it) } ?: if (s.borderColor == "accent") accent else p.slot(s.borderColor)
+    val glowAmount = ((override?.glow ?: s.glow) * (glow / 0.35f)).coerceIn(0f, 1.5f)
+    val glowRadius = s.glowRadius + if (style == BorderStyle.Glow) 6f else 0f
+    val neonPeriod = s.neonSpeed.coerceIn(0.5f, 30f)
+
+    return this
+        .drawBehind {
+            if (glowRadius <= 0f || glowAmount <= 0f) return@drawBehind
+            val outline = shape.createOutline(size, layoutDirection, this)
+            // Three soft passes, widest + faintest first.
+            for (i in 3 downTo 1) {
+                drawOutline(outline, rimColor.copy(alpha = 0.07f * glowAmount * (4 - i)), style = Stroke(width = (glowRadius * i / 1.5f).dp.toPx()))
+            }
+        }
+        .clip(shape)
+        .background(Brush.verticalGradient(listOf(Nx.Panel, Nx.Panel.copy(alpha = (Nx.Panel.alpha + 0.1f).coerceAtMost(1f)))))
+        .drawWithContent {
+            drawContent()
+            if (width <= 0f || style == BorderStyle.None || style == BorderStyle.Glow) return@drawWithContent
+            val outline = shape.createOutline(size, layoutDirection, this)
+            val w = width.dp.toPx() * (if (style == BorderStyle.Double) 1f else 2f) // stroke is centred on the clipped edge
+            when (style) {
+                BorderStyle.Gradient -> drawOutline(outline, Brush.linearGradient(listOf(rimColor.copy(alpha = 0.9f), rimColor.copy(alpha = 0.15f), Nx.Magenta.copy(alpha = 0.5f))), style = Stroke(w))
+                BorderStyle.Solid -> drawOutline(outline, rimColor.copy(alpha = 0.75f), style = Stroke(w))
+                BorderStyle.Dashed -> drawOutline(outline, rimColor.copy(alpha = 0.8f), style = Stroke(w, pathEffect = PathEffect.dashPathEffect(floatArrayOf(10.dp.toPx(), 6.dp.toPx()))))
+                BorderStyle.Double -> {
+                    drawOutline(outline, rimColor.copy(alpha = 0.8f), style = Stroke(w * 2))
+                    val inset = (width * 3 + 2).dp.toPx()
+                    val inner = shape.createOutline(androidx.compose.ui.geometry.Size(size.width - inset * 2, size.height - inset * 2), layoutDirection, this)
+                    translate(inset, inset) { drawOutline(inner, rimColor.copy(alpha = 0.45f), style = Stroke(width.dp.toPx())) }
+                }
+                BorderStyle.Neon -> {
+                    // A bright arc chasing round the rim.
+                    val phase = (NeonClock.time / neonPeriod) % 1f
+                    val c2 = Nx.Magenta
+                    val stops = listOf(0f to rimColor.copy(alpha = 0.15f), 0.35f to rimColor, 0.5f to c2, 0.65f to rimColor, 1f to rimColor.copy(alpha = 0.15f))
+                    val rotated = stops.map { (f, c) -> ((f + phase) % 1f) to c }.sortedBy { it.first }
+                    val brush = Brush.sweepGradient(*rotated.toTypedArray(), center = Offset(size.width / 2, size.height / 2))
+                    drawOutline(outline, brush, style = Stroke(w * 1.4f))
+                }
+                else -> {}
+            }
+            if (s.brackets && s.glow > 0f && style != BorderStyle.Neon) {
+                val l = 14.dp.toPx()
+                val bw = 2.dp.toPx()
+                val c = rimColor.copy(alpha = (0.4f + glowAmount).coerceAtMost(1f))
+                drawLine(c, Offset(size.width - l * 1.6f, 0f), Offset(size.width, 0f), bw * 2, StrokeCap.Square)
+                drawLine(c, Offset(size.width, 0f), Offset(size.width, l), bw * 2, StrokeCap.Square)
+                drawLine(c, Offset(0f, size.height), Offset(l * 1.6f, size.height), bw * 2, StrokeCap.Square)
+                drawLine(c, Offset(0f, size.height - l), Offset(0f, size.height), bw * 2, StrokeCap.Square)
+            }
+        }
+}
+
+// ---- Motion helpers (Customise › Motion: speed + bounce) -------------------------
+
+/** A spring tuned by the user's bounce and speed settings. */
+fun <T> nexusSpring(): androidx.compose.animation.core.SpringSpec<T> {
+    val m = LookState.look.motion
+    val damping = (1f - m.bounce.coerceIn(0f, 1f) * 0.65f) // 1.0 (no bounce) .. 0.35 (bouncy)
+    return spring(dampingRatio = damping, stiffness = 500f * m.speed.coerceIn(0.25f, 4f) * m.speed.coerceIn(0.25f, 4f))
+}
+
+/** Duration scaled by the user's speed setting. */
+fun nexusMs(base: Int): Int = (base / LookState.look.motion.speed.coerceIn(0.25f, 4f)).toInt().coerceAtLeast(1)
 
 @Composable
 fun HoloPanel(
@@ -341,7 +427,7 @@ fun Modifier.nexusPress(onClick: () -> Unit, onLongClick: (() -> Unit)? = null):
     val target = if (pressed) motion.pressScale.coerceIn(0.8f, 1f) else 1f
     val scale by animateFloatAsState(
         target,
-        if (motion.animations) spring(dampingRatio = 0.55f, stiffness = 700f) else snap(),
+        if (motion.animations) nexusSpring() else snap(),
         label = "press",
     )
     return this
@@ -382,7 +468,7 @@ fun HoloTile(
     val motion = LookState.look.motion
     val pulse = if (motion.pulse && motion.animations) {
         rememberInfiniteTransition(label = "pulse").animateFloat(
-            0.25f, 0.55f, infiniteRepeatable(tween(2400), RepeatMode.Reverse), label = "glow",
+            0.25f, 0.55f, infiniteRepeatable(tween(nexusMs(2400)), RepeatMode.Reverse), label = "glow",
         ).value
     } else 0.35f
     Column(

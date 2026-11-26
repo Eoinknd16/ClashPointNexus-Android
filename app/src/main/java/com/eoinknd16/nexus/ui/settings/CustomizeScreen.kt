@@ -58,6 +58,8 @@ import com.eoinknd16.nexus.look.Presets
 import com.eoinknd16.nexus.look.ResizeMode
 import com.eoinknd16.nexus.look.SubtitleEdge
 import com.eoinknd16.nexus.look.TempUnit
+import com.eoinknd16.nexus.look.TileAction
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.eoinknd16.nexus.look.parseColor
 import com.eoinknd16.nexus.look.updateDock
 import com.eoinknd16.nexus.ui.LocalNav
@@ -164,14 +166,25 @@ fun CustomizeScreen() {
                     ToggleRow("UPPERCASE labels", f.uppercaseLabels) { v -> edit { it.copy(fonts = f.copy(uppercaseLabels = v)) } }
                 }
 
-                Section("Panels & shapes", "Corners, borders, glow") {
+                Section("Panels & borders", "Corners, border style, glow") {
                     val s = look.shape
+                    ChoiceRow("Border style", com.eoinknd16.nexus.look.BorderStyle.entries, s.borderStyle, { it.label }) { v -> edit { it.copy(shape = s.copy(borderStyle = v, gradientBorder = true)) } }
+                    val bslots = listOf("accent" to "Accent (per tile)", "accent2" to "Second accent", "warn" to "Highlight", "text" to "Text", "custom" to "Custom")
+                    ChoiceRow(
+                        "Border colour", bslots.map { it.first }, if (s.borderColor.startsWith("#")) "custom" else s.borderColor,
+                        { k -> bslots.first { it.first == k }.second },
+                        preview = { k -> Swatch(if (k == "custom") parseColor(s.borderColor, Nx.Cyan) else LookState.palette.slot(k)) },
+                    ) { k -> edit { it.copy(shape = s.copy(borderColor = if (k == "custom") "#3CF2FF" else k)) } }
+                    if (s.borderColor.startsWith("#")) ColorRow("Custom border colour", s.borderColor) { v -> edit { it.copy(shape = s.copy(borderColor = v)) } }
+                    SliderRow("Outer glow", s.glowRadius, 0f..16f, { "${it.roundToInt()}dp" }) { v -> edit { it.copy(shape = s.copy(glowRadius = v)) } }
+                    if (s.borderStyle == com.eoinknd16.nexus.look.BorderStyle.Neon) {
+                        SliderRow("Neon loop time", s.neonSpeed, 0.5f..15f, { "%.1fs".format(it) }) { v -> edit { it.copy(shape = s.copy(neonSpeed = v)) } }
+                    }
                     ChoiceRow("Corners", CornerStyle.entries, s.corners, { it.label }) { v -> edit { it.copy(shape = s.copy(corners = v)) } }
                     SliderRow("Corner size", s.cornerSize, 0f..32f, { "${it.roundToInt()}dp" }) { v -> edit { it.copy(shape = s.copy(cornerSize = v)) } }
                     SliderRow("Border width", s.borderWidth, 0f..4f, { "%.1fdp".format(it) }) { v -> edit { it.copy(shape = s.copy(borderWidth = v)) } }
                     SliderRow("Glow", s.glow, 0f..1f, { "${(it * 100).roundToInt()}%" }) { v -> edit { it.copy(shape = s.copy(glow = v)) } }
                     ToggleRow("Corner brackets", s.brackets) { v -> edit { it.copy(shape = s.copy(brackets = v)) } }
-                    ToggleRow("Gradient rim", s.gradientBorder) { v -> edit { it.copy(shape = s.copy(gradientBorder = v)) } }
                 }
 
                 Section("Backdrop", "The animated background") {
@@ -185,18 +198,24 @@ fun CustomizeScreen() {
                     ToggleRow("Vignette", b.vignette) { v -> edit { it.copy(backdrop = b.copy(vignette = v)) } }
                 }
 
-                Section("Motion & feel") {
+                Section("Motion & feel", "Speed, bounce, transitions, haptics") {
                     val m = look.motion
                     ToggleRow("Animations", m.animations) { v -> edit { it.copy(motion = m.copy(animations = v)) } }
+                    SliderRow("Animation speed", m.speed, 0.4f..2.5f, { "%.1f×".format(it) }) { v -> edit { it.copy(motion = m.copy(speed = v)) } }
+                    SliderRow("Bounce", m.bounce, 0f..1f, { "${(it * 100).roundToInt()}%" }) { v -> edit { it.copy(motion = m.copy(bounce = v)) } }
+                    ChoiceRow("Screen transition", com.eoinknd16.nexus.look.ScreenTransition.entries, m.screenTransition, { it.label }) { v -> edit { it.copy(motion = m.copy(screenTransition = v)) } }
+                    ChoiceRow("Tiles appearing", com.eoinknd16.nexus.look.Entrance.entries, m.tileEntrance, { it.label }) { v -> edit { it.copy(motion = m.copy(tileEntrance = v)) } }
+                    ChoiceRow("Opening an app", com.eoinknd16.nexus.look.AppLaunch.entries, m.appLaunch, { it.label }) { v -> edit { it.copy(motion = m.copy(appLaunch = v)) } }
+                    ToggleRow("Strong haptics", m.strongHaptics, "Heavier buzz for gestures") { v -> edit { it.copy(motion = m.copy(strongHaptics = v)) } }
                     ToggleRow("Glow pulse on tiles", m.pulse) { v -> edit { it.copy(motion = m.copy(pulse = v)) } }
                     ToggleRow("Haptic feedback", m.haptics) { v -> edit { it.copy(motion = m.copy(haptics = v)) } }
                     SliderRow("Press squish", 1f - m.pressScale, 0f..0.15f, { "${(it * 100).roundToInt()}%" }) { v -> edit { it.copy(motion = m.copy(pressScale = 1f - v)) } }
                 }
 
-                Section("Home screen", "Gestures and spacing") {
+                Section("Gestures", "What each swipe does, and where it has to start") { GestureSettings() }
+
+                Section("Home screen", "Spacing and headings") {
                     val h = look.home
-                    ToggleRow("Swipe up for apps", h.swipeUpForApps) { v -> edit { it.copy(home = h.copy(swipeUpForApps = v)) } }
-                    ToggleRow("Swipe down for notifications", h.swipeDownForNotifications) { v -> edit { it.copy(home = h.copy(swipeDownForNotifications = v)) } }
                     ToggleRow("Section headings", h.showHeadings) { v -> edit { it.copy(home = h.copy(showHeadings = v)) } }
                     SliderRow("Side margins", h.sidePaddingDp, 0f..40f, { "${it.roundToInt()}dp" }) { v -> edit { it.copy(home = h.copy(sidePaddingDp = v)) } }
                     SliderRow("Space between blocks", h.blockSpacingDp, 0f..48f, { "${it.roundToInt()}dp" }) { v -> edit { it.copy(home = h.copy(blockSpacingDp = v)) } }
@@ -394,5 +413,73 @@ private fun BackupSettings(context: Context) {
     status?.let {
         Spacer(Modifier.height(8.dp))
         Text(hud(it), style = MaterialTheme.typography.labelSmall, color = Nx.Amber, modifier = Modifier.holoPanel(glow = 0f).padding(8.dp))
+    }
+}
+
+
+@Composable
+private fun GestureSettings() {
+    val c = appContainer()
+    val g = LookState.look.gestures
+    fun set(t: (com.eoinknd16.nexus.look.Gestures) -> com.eoinknd16.nexus.look.Gestures) = c.editLook { it.copy(gestures = t(it.gestures)) }
+
+    Text(
+        "A swipe only counts if it starts in its zone and is a clear, quick flick, so scrolling never sets one off. " +
+            "The zones show up as bands in home edit mode.",
+        style = MaterialTheme.typography.bodyMedium, color = Nx.Muted,
+    )
+    GestureRow("Swipe up", g.swipeUp, "from the bottom edge") { b -> set { it.copy(swipeUp = b) } }
+    GestureRow("Swipe down", g.swipeDown, "from the top edge") { b -> set { it.copy(swipeDown = b) } }
+    GestureRow("Swipe left", g.swipeLeft, "from the right edge") { b -> set { it.copy(swipeLeft = b) } }
+    GestureRow("Swipe right", g.swipeRight, "from the left edge") { b -> set { it.copy(swipeRight = b) } }
+    GestureRow("Two-finger swipe up", g.twoFingerUp, null) { b -> set { it.copy(twoFingerUp = b) } }
+    GestureRow("Two-finger swipe down", g.twoFingerDown, null) { b -> set { it.copy(twoFingerDown = b) } }
+    ActionPicker("Double-tap empty space", g.doubleTap) { a -> set { it.copy(doubleTap = a) } }
+    SliderRow("Edge zone size", g.edgeSize, 0.08f..0.4f, { "${(it * 100).roundToInt()}% of screen" }) { v -> set { it.copy(edgeSize = v) } }
+    SliderRow("Swipe length needed", g.minDistanceDp, 30f..160f, { "${it.roundToInt()}dp" }) { v -> set { it.copy(minDistanceDp = v) } }
+    ToggleRow("Show zones in edit mode", g.showZonesInEditMode) { v -> set { it.copy(showZonesInEditMode = v) } }
+    if (!com.eoinknd16.nexus.core.NexusAccessibilityService.isOn) {
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "Lock screen / Recents need the \"Nexus gestures\" accessibility helper. It only performs those actions and reads nothing on screen.",
+            style = MaterialTheme.typography.labelSmall, color = Nx.Muted,
+        )
+        val ctx = LocalContext.current
+        NexusButton("Turn on gesture helper") { com.eoinknd16.nexus.core.NexusAccessibilityService.openSettings(ctx) }
+    }
+}
+
+/** Actions a gesture can do (the tile actions that make sense without extra setup UI). */
+private val GESTURE_ACTIONS: List<Pair<TileAction, String>> = buildList {
+    add(TileAction(TileAction.Kind.None) to "Nothing")
+    com.eoinknd16.nexus.ui.home.SCREEN_TARGETS.forEach { (k, l) -> add(TileAction(TileAction.Kind.Screen, k) to "Open $l") }
+    add(TileAction(TileAction.Kind.Notifications) to "Notifications")
+    add(TileAction(TileAction.Kind.QuickSettings) to "Quick settings")
+    add(TileAction(TileAction.Kind.LockScreen) to "Lock screen")
+    add(TileAction(TileAction.Kind.Recents) to "Recent apps")
+    add(TileAction(TileAction.Kind.WakePc) to "Wake PC")
+    add(TileAction(TileAction.Kind.WebSearch) to "Web search")
+    com.eoinknd16.nexus.ui.home.PC_SCREEN_TARGETS.forEach { (k, l) -> add(TileAction(TileAction.Kind.PcScreen, k) to "PC: $l") }
+}
+
+@Composable
+private fun ActionPicker(title: String, action: TileAction, onChange: (TileAction) -> Unit) {
+    val apps by appContainer().apps.apps.collectAsStateWithLifecycle()
+    val appOptions = apps.map { TileAction(TileAction.Kind.LaunchApp, it.key) to "App: ${it.label}" }
+    val all = GESTURE_ACTIONS + appOptions
+    val current = all.firstOrNull { it.first == action } ?: (action to action.kind.label)
+    ChoiceRow(title, all, current, { it.second }) { onChange(it.first) }
+}
+
+@Composable
+private fun GestureRow(title: String, binding: com.eoinknd16.nexus.look.GestureBinding, edgeLabel: String?, onChange: (com.eoinknd16.nexus.look.GestureBinding) -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp).holoPanel(glow = 0f).padding(10.dp)) {
+        ActionPicker(title, binding.action) { onChange(binding.copy(action = it)) }
+        if (edgeLabel != null && binding.action.kind != TileAction.Kind.None) {
+            ChoiceRow(
+                "Starts", com.eoinknd16.nexus.look.GestureZone.entries, binding.zone,
+                { if (it == com.eoinknd16.nexus.look.GestureZone.Edge) "Only $edgeLabel" else "Anywhere" },
+            ) { onChange(binding.copy(zone = it)) }
+        }
     }
 }

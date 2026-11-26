@@ -166,7 +166,7 @@ private class Offset0 { var x = 0f; var y = 0f }
 private class IntSize0 { var w = 0; var h = 0 }
 
 private fun TileRunner.launchAndClose(app: LaunchableApp, onClose: () -> Unit) {
-    launch(app)
+    launch(app, null)
     onClose()
 }
 
