@@ -18,6 +18,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.serialization.builtins.serializer
 
 class NexusApp : Application() {
     lateinit var container: AppContainer
@@ -70,8 +71,8 @@ class AppContainer(app: Application) {
     /** Nexus resume cards hidden from home: title id -> when (re-shown once watched again). */
     val resumeHidden = JsonStore(
         ds, "resume_hidden",
-        kotlinx.serialization.builtins.MapSerializer(kotlinx.serialization.builtins.serializer<String>(), kotlinx.serialization.builtins.serializer<Long>()),
-        emptyMap(), scope,
+        kotlinx.serialization.builtins.MapSerializer(String.serializer(), Long.serializer()),
+        emptyMap<String, Long>(), scope,
     )
 
     val weather = WeatherRepository(app)
