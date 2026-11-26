@@ -25,16 +25,38 @@ import kotlinx.serialization.builtins.ListSerializer
 import java.io.File
 
 /**
- * Only here so Android lets Nexus read the media sessions other apps publish
- * (Spotify, YouTube, podcasts…). It never reads or stores notifications.
+ * Lets Nexus see the media sessions other apps publish (Spotify, YouTube,
+ * podcasts…) and count how many notifications each app has, for the dots on
+ * icons. It never reads, stores or sends the content of a notification.
  */
 class NexusMediaListener : NotificationListenerService() {
     override fun onListenerConnected() {
         instance?.refresh()
+        recount()
     }
+    override fun onListenerDisconnected() { NotificationDots.counts.value = emptyMap() }
+    override fun onNotificationPosted(sbn: android.service.notification.StatusBarNotification?) = recount()
+    override fun onNotificationRemoved(sbn: android.service.notification.StatusBarNotification?) = recount()
+
+    private fun recount() {
+        val active = runCatching { activeNotifications }.getOrNull() ?: return
+        NotificationDots.counts.value = active
+            .filter { n ->
+                !n.isOngoing && n.packageName != packageName &&
+                    (n.notification.flags and android.app.Notification.FLAG_GROUP_SUMMARY) == 0
+            }
+            .groupingBy { it.packageName }
+            .eachCount()
+    }
+
     companion object {
         @Volatile var instance: ExternalMedia? = null
     }
+}
+
+/** Unread notification count per app package (for icon dots). */
+object NotificationDots {
+    val counts = MutableStateFlow<Map<String, Int>>(emptyMap())
 }
 
 /** Something another app is playing (or played recently). */

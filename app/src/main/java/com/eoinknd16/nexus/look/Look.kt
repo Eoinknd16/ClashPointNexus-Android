@@ -590,6 +590,10 @@ data class HomeLayout(
     val trayBlurDp: Float = 18f,
     /** Fade the page out under the tray and off the bottom of the screen. */
     val trayFade: Boolean = true,
+    /** Dots on app icons and tiles with unread notifications. */
+    val notificationDots: Boolean = true,
+    /** Long-pressing an app shows its shortcuts menu (otherwise opens the editor). */
+    val appQuickMenus: Boolean = true,
     /** Per-block width / alignment / scale, by block id. */
     val blockSizes: Map<String, BlockSize> = emptyMap(),
 ) {

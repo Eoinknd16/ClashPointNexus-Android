@@ -1,5 +1,11 @@
 package com.eoinknd16.nexus.ui.apps
 
+import androidx.compose.material.icons.filled.Delete
+
+import androidx.compose.material.icons.filled.Info
+
+import androidx.compose.material.icons.filled.PushPin
+
 import androidx.compose.ui.text.font.FontWeight
 
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -279,7 +285,7 @@ private fun AppCell(
         ) {
             Box {
                 Image(app.icon, null, Modifier.size(iconSize))
-                if (pinned) Box(Modifier.size(8.dp).align(Alignment.TopEnd).background(Nx.Cyan, nexusShape(0.14f)))
+                com.eoinknd16.nexus.ui.home.NotificationDot(com.eoinknd16.nexus.ui.home.notificationCount(listOf(app.packageName)))
             }
             if (showLabel) Spacer(Modifier.height(6.dp))
             if (showLabel) Text(
@@ -287,11 +293,16 @@ private fun AppCell(
                 color = if (hidden) Nx.Muted else Nx.Text, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center,
             )
         }
-        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, containerColor = Nx.PanelSolid) {
-            DropdownMenuItem(text = { Text(if (pinned) "Remove from tray" else "Add to tray") }, onClick = { menu = false; onPin() })
-            DropdownMenuItem(text = { Text(if (hidden) "Unhide" else "Hide") }, onClick = { menu = false; onHide() })
-            DropdownMenuItem(text = { Text("App info") }, onClick = { menu = false; onInfo() })
-            DropdownMenuItem(text = { Text("Uninstall") }, onClick = { menu = false; onUninstall() })
+        if (menu) {
+            com.eoinknd16.nexus.ui.home.AppQuickMenu(
+                app,
+                listOf(
+                    com.eoinknd16.nexus.ui.home.QuickAction(if (pinned) "Unpin" else "To tray", Icons.Filled.PushPin, onClick = onPin),
+                    com.eoinknd16.nexus.ui.home.QuickAction(if (hidden) "Unhide" else "Hide", if (hidden) Icons.Filled.Visibility else Icons.Filled.VisibilityOff, onClick = onHide),
+                    com.eoinknd16.nexus.ui.home.QuickAction("Info", Icons.Filled.Info, onClick = onInfo),
+                    com.eoinknd16.nexus.ui.home.QuickAction("Uninstall", Icons.Filled.Delete, danger = true, onClick = onUninstall),
+                ),
+            ) { menu = false }
         }
     }
 }

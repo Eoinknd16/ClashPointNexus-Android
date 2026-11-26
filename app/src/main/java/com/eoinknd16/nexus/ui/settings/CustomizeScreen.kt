@@ -291,6 +291,8 @@ fun CustomizeScreen() {
                     ToggleRow("Panel behind it", d.framed) { v -> edit { it.updateDock { x -> x.copy(framed = v) } } }
                     SliderRow("Icon size", d.iconSizeDp, 28f..80f, { "${it.roundToInt()}dp" }) { v -> edit { it.updateDock { x -> x.copy(iconSizeDp = v) } } }
                     val hh = look.home
+                    ToggleRow("Notification dots", hh.notificationDots, "On app icons and tiles (uses the now-playing access; counts only)") { v -> edit { it.copy(home = it.home.copy(notificationDots = v)) } }
+                    ToggleRow("Long-press an app for its shortcuts", hh.appQuickMenus, "Off = long-press goes straight to the editor") { v -> edit { it.copy(home = it.home.copy(appQuickMenus = v)) } }
                     ToggleRow("Page dots above the tray", hh.showPageDots, "Only shows when you have more than one home page") { v -> edit { it.copy(home = it.home.copy(showPageDots = v)) } }
                     ToggleRow("Fade the page out under the tray", hh.trayFade, "No hard edge where the page meets the tray") { v -> edit { it.copy(home = it.home.copy(trayFade = v)) } }
                     SliderRow("Blur behind the tray", hh.trayBlurDp, 0f..40f, { if (it < 0.5f) "Off" else "${it.roundToInt()}dp" }) { v -> edit { it.copy(home = it.home.copy(trayBlurDp = v)) } }

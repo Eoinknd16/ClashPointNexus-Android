@@ -1,5 +1,13 @@
 package com.eoinknd16.nexus.ui.home
 
+import androidx.compose.material.icons.filled.Delete
+
+import androidx.compose.material.icons.filled.Edit
+
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+
 import kotlinx.coroutines.launch
 
 import androidx.compose.material.icons.filled.Close
@@ -385,7 +393,7 @@ private fun TilesGrid(
                 if (tile == null) AddCell(Modifier, onAddTile)
                 else TileView(
                     tile = tile, runner = runner, showSublabel = b.showSublabels, index = i, modifier = Modifier,
-                    onOpenFolder = onOpenFolder, onLongPress = { onEditTile(tile) }, style = style,
+                    onOpenFolder = onOpenFolder, onLongPress = { onEditTile(tile) }, style = style, editMode = editMode,
                 )
             }
         },
@@ -462,8 +470,20 @@ fun TileView(
     onLongPress: () -> Unit,
     index: Int = 0,
     style: TileStyle = TileStyle(),
+    editMode: Boolean = false,
 ) {
     val accent = LookState.palette.slot(tile.color)
+    val c = appContainer()
+    val appsForMenu by c.apps.apps.collectAsStateWithLifecycle()
+    val tileApp = if (tile.action.kind == com.eoinknd16.nexus.look.TileAction.Kind.LaunchApp) appsForMenu.firstOrNull { it.key == tile.action.arg } else null
+    var quickMenu by remember { mutableStateOf(false) }
+    val dots = notificationCount(
+        when {
+            tile.isFolder() -> tile.folderApps.map { it.substringBefore('/') }
+            tile.action.kind == com.eoinknd16.nexus.look.TileAction.Kind.LaunchApp -> listOf(tile.action.arg.substringBefore('/'))
+            else -> emptyList()
+        },
+    )
     var center by remember { mutableStateOf(Offset.Zero) }
     var bounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
     val entrance = entranceModifier(tile.entrance ?: LookState.look.motion.tileEntrance, index)
@@ -480,9 +500,17 @@ fun TileView(
                 bounds = it.boundsInRoot()
                 center = it.boundsInRoot().center
             }
-            .nexusPress({ if (tile.isFolder()) onOpenFolder(tile, center) else runner.run(tile, bounds) }, onLongPress)
+            .nexusPress(
+                { if (tile.isFolder()) onOpenFolder(tile, center) else runner.run(tile, bounds) },
+                {
+                    // Apps get their shortcuts menu; everything else (and edit mode) goes straight to the editor.
+                    if (!editMode && tileApp != null && LookState.look.home.appQuickMenus) quickMenu = true else onLongPress()
+                },
+            )
             .holoPanel(accent, pulse, tile.border),
     ) {
+        NotificationDot(dots, size = 12.dp, inset = 10.dp)
+        if (quickMenu) AppQuickMenu(tileApp, appActions(tileApp, onEdit = onLongPress, onRemove = null, c = c)) { quickMenu = false }
         tile.image?.takeIf { it.isNotBlank() }?.let {
             AsyncImage(it, null, contentScale = ContentScale.Crop, modifier = Modifier.matchParentSize().alpha(0.45f))
         }
@@ -824,7 +852,7 @@ fun Dock(
                 onOpenFolder = onOpenFolder,
                 onEdit = { onEditSlot(tile) },
                 onMove = { d -> c.editLook { it.moveTile(null, tile.id, d) } },
-                onRemove = { c.editLook { it.removeTile(null, tile.id) } },
+                onRemove = { c.editLook("Removed from tray") { it.removeTile(null, tile.id) } },
             )
         }
         if (editMode || config.items.isEmpty()) {
@@ -910,14 +938,30 @@ private fun DockSlot(
                 .nexusPress({ if (tile.isFolder()) onOpenFolder(tile, center) else runner.run(tile, bounds) }, onLongClick = { menu = true }),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            TileIcon(tile, runner, accent, size)
+            Box {
+                TileIcon(tile, runner, accent, size)
+                NotificationDot(
+                    notificationCount(
+                        if (tile.isFolder()) tile.folderApps.map { it.substringBefore('/') }
+                        else if (tile.action.kind == com.eoinknd16.nexus.look.TileAction.Kind.LaunchApp) listOf(tile.action.arg.substringBefore('/')) else emptyList(),
+                    ),
+                )
+            }
             if (showLabel) Text(tile.label, style = MaterialTheme.typography.labelSmall, color = Nx.Text, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.width(size + 16.dp), textAlign = TextAlign.Center)
         }
-        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, containerColor = Nx.PanelSolid) {
-            DropdownMenuItem(text = { Text("Edit") }, onClick = { menu = false; onEdit() })
-            DropdownMenuItem(text = { Text("Move left") }, onClick = { menu = false; onMove(-1) })
-            DropdownMenuItem(text = { Text("Move right") }, onClick = { menu = false; onMove(1) })
-            DropdownMenuItem(text = { Text("Remove from tray", color = Nx.Danger) }, onClick = { menu = false; onRemove() })
+        if (menu) {
+            val c = appContainer()
+            val apps by c.apps.apps.collectAsStateWithLifecycle()
+            val app = if (tile.action.kind == com.eoinknd16.nexus.look.TileAction.Kind.LaunchApp) apps.firstOrNull { it.key == tile.action.arg } else null
+            AppQuickMenu(
+                app,
+                listOf(
+                    QuickAction("Edit", Icons.Filled.Edit, onClick = onEdit),
+                    QuickAction("Left", Icons.AutoMirrored.Filled.KeyboardArrowLeft) { onMove(-1) },
+                    QuickAction("Right", Icons.AutoMirrored.Filled.KeyboardArrowRight) { onMove(1) },
+                    QuickAction("Remove", Icons.Filled.Delete, danger = true, onClick = onRemove),
+                ),
+            ) { menu = false }
         }
     }
 }
