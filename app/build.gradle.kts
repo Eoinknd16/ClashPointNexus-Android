@@ -41,7 +41,10 @@ android {
             signingConfig = signingConfigs.getByName("nexus")
         }
         release {
-            isMinifyEnabled = false
+            // R8 optimises the libraries (Compose especially) for smoother frames and faster start.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = signingConfigs.getByName("nexus")
         }
     }
@@ -82,5 +85,8 @@ dependencies {
     implementation(libs.media3.exoplayer.hls)
     implementation(libs.media3.datasource.okhttp)
     implementation(libs.media3.ui)
+    // Installs the baseline profiles that ship inside Compose etc. on sideloaded installs,
+    // so code is pre-compiled instead of running interpreted for the first sessions.
+    implementation("androidx.profileinstaller:profileinstaller:1.4.1")
     debugImplementation(libs.androidx.compose.ui.tooling)
 }
