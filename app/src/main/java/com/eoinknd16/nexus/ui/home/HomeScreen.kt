@@ -170,6 +170,10 @@ fun HomeScreen() {
     // Leaving home (an app opened, the screen turned off) resets the drawer.
     LifecycleResumeEffect(drawer) { onPauseOrDispose { if (!drawer.dragging) drawer.snapClosed() } }
     val drawerOpen by remember { androidx.compose.runtime.derivedStateOf { drawer.isOpen } }
+    val searchRecede by androidx.compose.animation.core.animateFloatAsState(
+        if (UniversalSearchHub.open) 1f else 0f, androidx.compose.animation.core.tween(com.eoinknd16.nexus.ui.fx.nexusMs(260)), label = "searchRecede",
+    )
+    androidx.compose.runtime.SideEffect { appContainerEditHome = { editMode = true } }
 
     BackHandler {
         when {
@@ -236,7 +240,7 @@ fun HomeScreen() {
         Modifier
             .homeGestures(
                 gestures = look.gestures,
-                enabled = !editMode && folder == null && !drawerOpen,
+                enabled = !editMode && folder == null && !drawerOpen && !UniversalSearchHub.open,
                 drawer = drawer,
                 onAction = { a, dir -> runner.runAction(a, dir) },
                 onFired = haptic,
@@ -260,7 +264,7 @@ fun HomeScreen() {
         var pageH by remember { mutableStateOf(0) }
         var dockIconsY by remember { mutableStateOf(Float.NaN) }
         val blurFrom = if (dockIconsY.isNaN()) pageH - trayPx.toFloat() else dockIconsY - pageTopY
-        Column(Modifier.fillMaxSize().recedeBehindDrawer { drawer.progress.value }.statusBarsPadding()) {
+        Column(Modifier.fillMaxSize().recedeBehindDrawer { maxOf(drawer.progress.value, searchRecede) }.statusBarsPadding()) {
             AnimatedVisibility(editMode, enter = slideInVertically() + fadeIn(), exit = slideOutVertically() + fadeOut()) {
                 EditBar(
                     pageName = currentPage?.name,
@@ -383,6 +387,7 @@ fun HomeScreen() {
     }
 
         DrawerOverlay(drawer)
+        UniversalSearch(runner, onNavigate = { nav.navigate(it) })
 
         folder?.let { f ->
             FolderOverlay(

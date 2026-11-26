@@ -329,75 +329,38 @@ private fun WeatherPanel(b: HomeBlock.Weather, vm: HomeViewModel) {
 
 @Composable
 private fun SearchBarView(b: HomeBlock.SearchBar, runner: TileRunner) {
-    val c = appContainer()
-    val apps by c.apps.apps.collectAsStateWithLifecycle()
-    var query by remember { mutableStateOf("") }
+    // Tapping opens search-everything (apps, contacts, commands, maths, shows, web).
     val voice = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
         if (r.resultCode == Activity.RESULT_OK) {
             r.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.let { spoken ->
-                runner.webSearch(spoken, b.engine, b.customUrl)
+                UniversalSearchHub.show(spoken)
             }
         }
     }
     val shape = nexusShape(0.7f)
-    Column(Modifier.fillMaxWidth()) {
-        Row(
-            Modifier.fillMaxWidth().clip(shape).background(Nx.Panel).border(1.dp, Nx.CyanDim, shape).padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(Icons.Filled.Search, null, tint = Nx.Cyan, modifier = Modifier.size(20.dp))
-            Spacer(Modifier.width(10.dp))
-            Box(Modifier.weight(1f)) {
-                if (query.isEmpty()) Text(b.placeholder, color = Nx.Muted, style = MaterialTheme.typography.bodyLarge)
-                BasicTextField(
-                    value = query,
-                    onValueChange = { query = it },
-                    singleLine = true,
-                    textStyle = TextStyle(color = Nx.Text, fontSize = 16.sp),
-                    cursorBrush = SolidColor(Nx.Cyan),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(onSearch = {
-                        runner.webSearch(query, b.engine, b.customUrl)
-                        query = ""
-                    }),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-            if (b.showMic) {
-                Box(
-                    Modifier.size(32.dp).nexusPress({
-                        runCatching {
-                            voice.launch(
-                                Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
-                                    .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM),
-                            )
-                        }
-                    }),
-                    contentAlignment = Alignment.Center,
-                ) { Icon(Icons.Filled.Mic, "Voice search", tint = Nx.Cyan) }
-            }
-        }
-        if (b.matchApps && query.isNotBlank()) {
-            val matches = apps.filter { it.label.contains(query.trim(), ignoreCase = true) }.take(8)
-            if (matches.isNotEmpty()) {
-                Spacer(Modifier.height(8.dp))
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    items(matches, key = { it.key }) { app ->
-                        Column(
-                            Modifier.width(64.dp).nexusPress({
-                                c.apps.launch(app)
-                                query = ""
-                            }),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                        ) {
-                            Image(app.icon, app.label, Modifier.size(44.dp))
-                            Text(app.label, style = MaterialTheme.typography.labelSmall, color = Nx.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        }
+    Row(
+        Modifier.fillMaxWidth().nexusPress({ UniversalSearchHub.show() }).clip(shape).background(Nx.Panel).border(1.dp, Nx.CyanDim, shape)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Filled.Search, null, tint = Nx.Cyan, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(10.dp))
+        Text(b.placeholder, color = Nx.Muted, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f), maxLines = 1)
+        if (b.showMic) {
+            Box(
+                Modifier.size(32.dp).nexusPress({
+                    runCatching {
+                        voice.launch(
+                            Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                                .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM),
+                        )
                     }
-                }
-            }
+                }),
+                contentAlignment = Alignment.Center,
+            ) { Icon(Icons.Filled.Mic, "Voice search", tint = Nx.Cyan) }
         }
     }
+    @Suppress("UNUSED_EXPRESSION") runner
 }
 
 // ---- Tiles ---------------------------------------------------------------------

@@ -30,6 +30,15 @@ data class LaunchableApp(
     val key: String get() = component.flattenToShortString()
 }
 
+/** One of an app's shortcuts. */
+data class AppShortcut(
+    val id: String,
+    val label: String,
+    val app: LaunchableApp,
+    val icon: ImageBitmap?,
+    val info: android.content.pm.ShortcutInfo,
+)
+
 @Serializable
 data class LauncherPrefs(
     /** Component keys pinned to the home dock, in order. */
@@ -115,6 +124,39 @@ class AppsRepository(
         val intent = Intent(Intent.ACTION_DELETE, android.net.Uri.parse("package:${app.packageName}"))
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         runCatching { context.startActivity(intent) }
+    }
+
+    /**
+     * The app's own shortcuts ("New message", "Navigate home"...), as long as
+     * Nexus is the default home app (Android only shares them with that).
+     */
+    fun shortcuts(app: LaunchableApp, max: Int = 5): List<AppShortcut> = runCatching {
+        if (!launcherApps.hasShortcutHostPermission()) return emptyList()
+        val q = LauncherApps.ShortcutQuery()
+            .setPackage(app.packageName)
+            .setQueryFlags(
+                LauncherApps.ShortcutQuery.FLAG_MATCH_DYNAMIC or LauncherApps.ShortcutQuery.FLAG_MATCH_MANIFEST or
+                    LauncherApps.ShortcutQuery.FLAG_MATCH_PINNED,
+            )
+        val density = context.resources.displayMetrics.densityDpi
+        launcherApps.getShortcuts(q, app.user).orEmpty()
+            .filter { it.isEnabled && (it.activity == null || it.activity?.packageName == app.packageName) }
+            .sortedBy { it.rank }
+            .distinctBy { it.id }
+            .take(max)
+            .map { info ->
+                AppShortcut(
+                    id = info.id,
+                    label = (info.shortLabel ?: info.longLabel ?: "").toString(),
+                    app = app,
+                    icon = runCatching { launcherApps.getShortcutIconDrawable(info, density)?.toBitmap(96, 96)?.asImageBitmap() }.getOrNull(),
+                    info = info,
+                )
+            }
+    }.getOrDefault(emptyList())
+
+    fun startShortcut(s: AppShortcut, bounds: android.graphics.Rect? = null) {
+        runCatching { launcherApps.startShortcut(s.info, bounds, null) }.onFailure { launch(s.app, bounds) }
     }
 
     suspend fun togglePin(app: LaunchableApp) = prefs.update { p ->
