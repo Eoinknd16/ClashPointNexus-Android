@@ -160,6 +160,17 @@ fun HomeScreen() {
         }
     }
 
+    val haptics = com.eoinknd16.nexus.ui.fx.rememberHaptics()
+    val drawerScope = rememberCoroutineScope()
+    val drawer = remember { DrawerController(drawerScope, haptics) }
+    androidx.compose.runtime.DisposableEffect(drawer) {
+        HomeDrawerHub.controller = drawer
+        onDispose { if (HomeDrawerHub.controller === drawer) HomeDrawerHub.controller = null }
+    }
+    // Leaving home (an app opened, the screen turned off) resets the drawer.
+    LifecycleResumeEffect(drawer) { onPauseOrDispose { if (!drawer.dragging) drawer.snapClosed() } }
+    val drawerOpen by remember { androidx.compose.runtime.derivedStateOf { drawer.isOpen } }
+
     BackHandler {
         when {
             drawerOpen -> drawer.close()
@@ -175,16 +186,6 @@ fun HomeScreen() {
     }
 
     val haptic = rememberGestureHaptic()
-    val haptics = com.eoinknd16.nexus.ui.fx.rememberHaptics()
-    val drawerScope = rememberCoroutineScope()
-    val drawer = remember { DrawerController(drawerScope, haptics) }
-    androidx.compose.runtime.DisposableEffect(drawer) {
-        HomeDrawerHub.controller = drawer
-        onDispose { if (HomeDrawerHub.controller === drawer) HomeDrawerHub.controller = null }
-    }
-    // Leaving home (an app opened, the screen turned off) resets the drawer.
-    LifecycleResumeEffect(drawer) { onPauseOrDispose { if (!drawer.dragging) drawer.snapClosed() } }
-    val drawerOpen by remember { androidx.compose.runtime.derivedStateOf { drawer.isOpen } }
 
     val pager = com.eoinknd16.nexus.look.HomePager
     // A deleted page falls back to main.
