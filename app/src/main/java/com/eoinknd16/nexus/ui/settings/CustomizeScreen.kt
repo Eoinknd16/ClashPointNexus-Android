@@ -30,6 +30,21 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Backup
+import androidx.compose.material.icons.filled.Cloud
+import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.Apps
+import androidx.compose.material.icons.filled.Dock
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Swipe
+import androidx.compose.material.icons.filled.Animation
+import androidx.compose.material.icons.filled.Wallpaper
+import androidx.compose.material.icons.filled.CropSquare
+import androidx.compose.material.icons.filled.TextFields
+import androidx.compose.material.icons.filled.Palette as PaletteIcon
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.MaterialTheme
@@ -179,7 +194,7 @@ fun CustomizeScreen() {
                     }
                 }
 
-                Section("Colours", "Accent ${look.palette.accent.uppercase()} · panels ${(look.palette.panelOpacity * 100).roundToInt()}%", icon = androidx.compose.material.icons.Icons.Filled.Palette, onReset = { edit(undoLabel = "Colours reset") { it.copy(palette = Palette()) } }) {
+                Section("Colours", "Accent ${look.palette.accent.uppercase()} · panels ${(look.palette.panelOpacity * 100).roundToInt()}%", icon = androidx.compose.material.icons.Icons.Filled.PaletteIcon, onReset = { edit(undoLabel = "Colours reset") { it.copy(palette = Palette()) } }) {
                     ColorRow("Accent", look.palette.accent) { v -> pal { it.copy(accent = v) } }
                     ColorRow("Second accent", look.palette.accent2) { v -> pal { it.copy(accent2 = v) } }
                     ColorRow("Warning / highlight", look.palette.warn) { v -> pal { it.copy(warn = v) } }

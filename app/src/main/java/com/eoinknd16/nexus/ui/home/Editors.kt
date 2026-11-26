@@ -565,6 +565,7 @@ private fun TileEditor(blockId: String?, existing: TileConfig?, onDismiss: () ->
         TextRow("Background image URL (optional)", t.image ?: "", "https://…/image.jpg", KeyboardType.Uri) { t = t.copy(image = it.ifBlank { null }) }
         }
         "Border" -> {
+        val inheritE = "inherit"
         Hint("Overrides the border for this tile only. Everything else follows Customise › Panels & borders.")
         val b = t.border ?: com.eoinknd16.nexus.look.BorderOverride()
         ChoiceRow(
