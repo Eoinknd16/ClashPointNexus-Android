@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Cleartext is needed for the living-room PC link (plain HTTP on the
+     LAN / Tailscale mesh) and for direct-URL streams some addons return.
+     Addon/Cinemeta traffic itself is HTTPS. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Hexagonal "N" core: a ring, an inner hex and the N stroke, in Nexus cyan. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:pathData="M54,22 L81.7,38 L81.7,70 L54,86 L26.3,70 L26.3,38 Z"
+        android:strokeColor="#3CF2FF"
+        android:strokeWidth="3"
+        android:fillColor="#00000000" />
+    <path
+        android:pathData="M54,32 L73,43 L73,65 L54,76 L35,65 L35,43 Z"
+        android:fillColor="#1A3CF2FF" />
+    <path
+        android:pathData="M43,66 L43,42 L65,66 L65,42"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="4.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000" />
+</vector>
