@@ -2,7 +2,7 @@ name: Android build
 
 # Every push builds a debug APK (uploaded as a workflow artifact) so compile
 # errors show up immediately. Every push to main also builds a release APK
-# and publishes it as a GitHub Release (v0.1.<run number>), so the newest
+# and publishes it as a GitHub Release (v0.2.<run number>), so the newest
 # build is always one tap away on the Releases page, phone browser included.
 # Pushing your own v* tag does the same with that exact version.
 on:
@@ -39,7 +39,7 @@ jobs:
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             VERSION="${GITHUB_REF_NAME#v}"
           else
-            VERSION="0.1.${{ github.run_number }}"
+            VERSION="0.2.${{ github.run_number }}"
           fi
           echo "NEXUS_VERSION_NAME=$VERSION" >> "$GITHUB_ENV"
           echo "NEXUS_VERSION_CODE=${{ github.run_number }}" >> "$GITHUB_ENV"
