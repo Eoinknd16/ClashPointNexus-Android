@@ -53,7 +53,10 @@ fun Modifier.homeGestures(
     onFired: () -> Unit,
     /** Lets the screen take over a direction (e.g. "swipe back to the main page"). */
     overrideFor: (SwipeDir) -> TileAction? = { null },
-): Modifier = if (!enabled) this else pointerInput(gestures, overrideFor) {
+    /** When swipe-up opens the app drawer, the drawer follows the finger instead of waiting for a flick. */
+    drawer: DrawerController? = null,
+): Modifier = if (!enabled) this else pointerInput(gestures, overrideFor, drawer) {
+    val touchSlop = viewConfiguration.touchSlop
     val minDistance = gestures.minDistanceDp.dp.toPx()
     val minVelocity = 600.dp.toPx() // px/s
     awaitPointerEventScope {
@@ -92,6 +95,30 @@ fun Modifier.homeGestures(
                 val delta = if (maxPointers >= 2) centroid(pressed) - centroidStart else main.position - start
                 val ax = abs(delta.x)
                 val ay = abs(delta.y)
+                // Drawer: as soon as it's clearly an upward drag from the right place, hand the finger to the drawer.
+                val up = gestures.swipeUp
+                val drawerBound = up.action.kind == TileAction.Kind.Screen && up.action.arg == "apps"
+                if (drawer != null && drawerBound && maxPointers == 1 && delta.y < -touchSlop && ay > ax * 1.5f &&
+                    (up.zone == GestureZone.Anywhere || inBottom)
+                ) {
+                    event.changes.forEach { it.consume() }
+                    drawer.startDrag()
+                    drawer.dragBy(-(delta.y + touchSlop).coerceAtMost(0f))
+                    var last = main.position.y
+                    while (true) {
+                        val e = awaitPointerEvent(PointerEventPass.Initial)
+                        val ch = e.changes.firstOrNull { it.id == first.id } ?: e.changes.first()
+                        if (!ch.pressed) {
+                            drawer.endDrag(-tracker.calculateVelocity().y)
+                            break
+                        }
+                        tracker.addPosition(ch.uptimeMillis, ch.position)
+                        drawer.dragBy(last - ch.position.y)
+                        last = ch.position.y
+                        e.changes.forEach { it.consume() }
+                    }
+                    break
+                }
                 if (maxOf(ax, ay) < minDistance) continue
                 val dir = when {
                     ay > ax * 2 -> if (delta.y < 0) Dir.Up else Dir.Down
@@ -172,11 +199,8 @@ private fun ZoneLabel(text: String) {
 /** Haptic helper honouring Customise › Motion. */
 @Composable
 fun rememberGestureHaptic(): () -> Unit {
-    val haptics = LocalHapticFeedback.current
-    val motion = LookState.look.motion
-    return {
-        if (motion.haptics) haptics.performHapticFeedback(if (motion.strongHaptics) HapticFeedbackType.LongPress else HapticFeedbackType.TextHandleMove)
-    }
+    val h = com.eoinknd16.nexus.ui.fx.rememberHaptics()
+    return { h.click() }
 }
 
 /** Gesture actions reuse the tile runner (folders aren't a gesture target). */

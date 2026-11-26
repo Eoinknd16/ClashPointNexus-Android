@@ -205,15 +205,16 @@ private fun HubButton(label: String, icon: ImageVector, accent: Color, modifier:
 private fun HoldButton(label: String, icon: ImageVector, accent: Color, modifier: Modifier, onConfirmed: () -> Unit) {
     val progress = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
-    val haptic = rememberGestureHaptic()
+    val haptics = com.eoinknd16.nexus.ui.fx.rememberHaptics()
     Box(
         modifier.height(64.dp).clip(nexusShape(0.6f))
             .pointerInput(Unit) {
                 awaitEachGesture {
                     awaitFirstDown()
                     val job = scope.launch {
+                        haptics.tick()
                         progress.animateTo(1f, tween(800, easing = LinearEasing))
-                        haptic()
+                        haptics.confirm()
                         onConfirmed()
                     }
                     waitForUpOrCancellation()

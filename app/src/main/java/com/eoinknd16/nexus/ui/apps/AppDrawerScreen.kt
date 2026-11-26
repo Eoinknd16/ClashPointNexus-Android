@@ -1,5 +1,17 @@
 package com.eoinknd16.nexus.ui.apps
 
+import androidx.compose.ui.text.font.FontWeight
+
+import androidx.compose.foundation.gestures.awaitFirstDown
+
+import androidx.compose.foundation.gestures.awaitEachGesture
+
+import androidx.compose.ui.input.pointer.pointerInput
+
+import androidx.compose.foundation.layout.width
+
+import androidx.compose.foundation.layout.fillMaxHeight
+
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -66,39 +78,62 @@ import kotlinx.coroutines.launch
 
 @Composable
 fun AppDrawerScreen() {
+    NexusBackdrop(intensity = 0.6f) {
+        AppDrawerContent(Modifier.fillMaxSize().navigationBarsPadding().imePadding(), autoFocus = LookState.look.drawer.autoFocusSearch)
+    }
+}
+
+/**
+ * The app list itself, shared by the full-screen route and the swipe-up
+ * overlay on home. [gridState] lets the overlay know when the list is at the
+ * top (so a downward drag closes the drawer instead of scrolling).
+ */
+@Composable
+fun AppDrawerContent(
+    modifier: Modifier = Modifier,
+    gridState: androidx.compose.foundation.lazy.grid.LazyGridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState(),
+    autoFocus: Boolean = false,
+    onLaunched: () -> Unit = {},
+    headerExtra: @Composable () -> Unit = {},
+) {
     val repo = appContainer().apps
     val apps by repo.apps.collectAsStateWithLifecycle()
     val prefs by repo.prefs.state.collectAsStateWithLifecycle()
     var query by rememberSaveable { mutableStateOf("") }
     var showHidden by rememberSaveable { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val haptics = com.eoinknd16.nexus.ui.fx.rememberHaptics()
 
     val c = appContainer()
     val drawer = LookState.look.drawer
     val dockKeys = LookState.look.home.dock.items.filter { it.action.kind == TileAction.Kind.LaunchApp }.map { it.action.arg }.toSet()
     val focus = remember { FocusRequester() }
-    LaunchedEffect(drawer.autoFocusSearch) { if (drawer.autoFocusSearch) runCatching { focus.requestFocus() } }
+    LaunchedEffect(autoFocus) { if (autoFocus) runCatching { focus.requestFocus() } }
 
     val visible = apps
         .filter { showHidden || it.key !in prefs.hidden }
-        .filter { query.isBlank() || it.label.contains(query.trim(), ignoreCase = true) }
+        .filter { query.isBlank() || fuzzyMatch(it.label, query) }
+        .let { list -> if (query.isBlank()) list else list.sortedByDescending { fuzzyScore(it.label, query) } }
 
-    NexusBackdrop(intensity = 0.6f) {
-        Column(Modifier.fillMaxSize().navigationBarsPadding().imePadding()) {
-            ScreenHeader("Apps", "${apps.size} installed") {
-                Box(Modifier.size(40.dp).nexusPress({ showHidden = !showHidden }), contentAlignment = Alignment.Center) {
-                    Icon(
-                        if (showHidden) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
-                        if (showHidden) "Hide hidden apps" else "Show hidden apps",
-                        tint = if (showHidden) Nx.Cyan else Nx.Muted,
-                    )
-                }
+    Column(modifier) {
+        ScreenHeader("Apps", "${apps.size} installed") {
+            headerExtra()
+            Box(Modifier.size(40.dp).nexusPress({ showHidden = !showHidden }), contentAlignment = Alignment.Center) {
+                Icon(
+                    if (showHidden) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
+                    if (showHidden) "Hide hidden apps" else "Show hidden apps",
+                    tint = if (showHidden) Nx.Cyan else Nx.Muted,
+                )
             }
-            if (drawer.showSearch) SearchField(query, { query = it }, focus, onGo = { visible.firstOrNull()?.let(repo::launch) })
+        }
+        if (drawer.showSearch) SearchField(query, { query = it }, focus, onGo = { visible.firstOrNull()?.let { repo.launch(it); onLaunched() } })
+        Row(Modifier.fillMaxSize()) {
             LazyVerticalGrid(
+                state = gridState,
                 columns = if (drawer.columns > 0) GridCells.Fixed(drawer.columns) else GridCells.Adaptive((drawer.iconSizeDp + 26).dp),
-                modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
+                modifier = Modifier.weight(1f).fillMaxSize().padding(start = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 24.dp),
             ) {
                 items(visible, key = { it.key }) { app ->
                     AppCell(
@@ -107,9 +142,9 @@ fun AppDrawerScreen() {
                         hidden = app.key in prefs.hidden,
                         iconSize = drawer.iconSizeDp.dp,
                         showLabel = drawer.showLabels,
-                        onLaunch = { repo.launch(app) },
+                        onLaunch = { repo.launch(app); onLaunched() },
                         onPin = {
-                            c.editLook { l ->
+                            c.editLook(if (app.key in dockKeys) "Removed from tray" else "Added to tray") { l ->
                                 if (app.key in dockKeys) l.updateDock { d -> d.copy(items = d.items.filterNot { it.action.kind == TileAction.Kind.LaunchApp && it.action.arg == app.key }) }
                                 else l.updateDock { d -> d.copy(items = d.items + appTile(app.key, app.label)) }
                             }
@@ -120,8 +155,77 @@ fun AppDrawerScreen() {
                     )
                 }
             }
+            // A–Z scrubber: slide your thumb down it to jump, with a tick per letter.
+            if (query.isBlank() && visible.size > 30) {
+                val letters = remember(visible) { visible.map { firstLetter(it.label) }.distinct() }
+                AlphabetScrubber(letters, Modifier.fillMaxHeight().width(28.dp)) { letter ->
+                    val idx = visible.indexOfFirst { firstLetter(it.label) == letter }
+                    if (idx >= 0) {
+                        haptics.tick()
+                        scope.launch { gridState.scrollToItem(idx) }
+                    }
+                }
+            }
         }
     }
+}
+
+private fun firstLetter(label: String): Char = label.trim().firstOrNull()?.uppercaseChar()?.takeIf { it.isLetter() } ?: '#'
+
+@Composable
+private fun AlphabetScrubber(letters: List<Char>, modifier: Modifier, onLetter: (Char) -> Unit) {
+    var active by remember { mutableStateOf<Char?>(null) }
+    Column(
+        modifier
+            .pointerInput(letters) {
+                fun at(y: Float): Char? = if (letters.isEmpty()) null else letters[((y / size.height) * letters.size).toInt().coerceIn(0, letters.lastIndex)]
+                awaitEachGesture {
+                    val down = awaitFirstDown()
+                    at(down.position.y)?.let { active = it; onLetter(it) }
+                    while (true) {
+                        val e = awaitPointerEvent()
+                        val ch = e.changes.firstOrNull() ?: break
+                        if (!ch.pressed) break
+                        ch.consume()
+                        val l = at(ch.position.y)
+                        if (l != null && l != active) { active = l; onLetter(l) }
+                    }
+                    active = null
+                }
+            },
+        verticalArrangement = Arrangement.SpaceEvenly,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        letters.forEach { l ->
+            Text(
+                l.toString(),
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = if (l == active) 14.sp else 10.sp),
+                color = if (l == active) Nx.Cyan else Nx.Muted,
+                fontWeight = if (l == active) FontWeight.Bold else FontWeight.Normal,
+            )
+        }
+    }
+}
+
+/** "spt" finds Spotify: letters in order, word starts count most. */
+fun fuzzyMatch(label: String, query: String): Boolean = fuzzyScore(label, query) > 0
+
+fun fuzzyScore(label: String, query: String): Int {
+    val l = label.lowercase()
+    val q = query.trim().lowercase()
+    if (q.isEmpty()) return 1
+    if (l.startsWith(q)) return 1000 - l.length
+    if (l.split(' ', '-', '_').any { it.startsWith(q) }) return 800 - l.length
+    if (l.contains(q)) return 600 - l.length
+    // Initials: "gm" -> Google Maps.
+    val initials = l.split(' ', '-', '_').filter { it.isNotEmpty() }.joinToString("") { it.take(1) }
+    if (initials.startsWith(q)) return 500
+    var i = 0
+    var score = 0
+    for (ch in l) {
+        if (i < q.length && ch == q[i]) { i++; score += 10 }
+    }
+    return if (i == q.length) 100 + score - l.length else 0
 }
 
 @Composable

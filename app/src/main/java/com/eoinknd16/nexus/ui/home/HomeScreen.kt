@@ -51,6 +51,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -161,6 +162,7 @@ fun HomeScreen() {
 
     BackHandler {
         when {
+            drawerOpen -> drawer.close()
             folder != null -> folderCloseRequest++
             editMode -> editMode = false
             // A launcher has nothing behind it to go back to.
@@ -173,6 +175,16 @@ fun HomeScreen() {
     }
 
     val haptic = rememberGestureHaptic()
+    val haptics = com.eoinknd16.nexus.ui.fx.rememberHaptics()
+    val drawerScope = rememberCoroutineScope()
+    val drawer = remember { DrawerController(drawerScope, haptics) }
+    androidx.compose.runtime.DisposableEffect(drawer) {
+        HomeDrawerHub.controller = drawer
+        onDispose { if (HomeDrawerHub.controller === drawer) HomeDrawerHub.controller = null }
+    }
+    // Leaving home (an app opened, the screen turned off) resets the drawer.
+    LifecycleResumeEffect(drawer) { onPauseOrDispose { if (!drawer.dragging) drawer.snapClosed() } }
+    val drawerOpen by remember { androidx.compose.runtime.derivedStateOf { drawer.isOpen } }
 
     val pager = com.eoinknd16.nexus.look.HomePager
     // A deleted page falls back to main.
@@ -223,7 +235,8 @@ fun HomeScreen() {
         Modifier
             .homeGestures(
                 gestures = look.gestures,
-                enabled = !editMode && folder == null,
+                enabled = !editMode && folder == null && !drawerOpen,
+                drawer = drawer,
                 onAction = { a, dir -> runner.runAction(a, dir) },
                 onFired = haptic,
                 // On an extra page, swiping back the way you came returns to main
@@ -246,7 +259,7 @@ fun HomeScreen() {
         var pageH by remember { mutableStateOf(0) }
         var dockIconsY by remember { mutableStateOf(Float.NaN) }
         val blurFrom = if (dockIconsY.isNaN()) pageH - trayPx.toFloat() else dockIconsY - pageTopY
-        Column(Modifier.fillMaxSize().statusBarsPadding()) {
+        Column(Modifier.fillMaxSize().recedeBehindDrawer { drawer.progress.value }.statusBarsPadding()) {
             AnimatedVisibility(editMode, enter = slideInVertically() + fadeIn(), exit = slideOutVertically() + fadeOut()) {
                 EditBar(
                     pageName = currentPage?.name,
@@ -367,6 +380,8 @@ fun HomeScreen() {
 
         if (editMode && look.gestures.showZonesInEditMode) GestureZonesOverlay(look.gestures)
     }
+
+        DrawerOverlay(drawer)
 
         folder?.let { f ->
             FolderOverlay(

@@ -103,7 +103,10 @@ class TileRunner(
     fun run(tile: TileConfig, from: androidx.compose.ui.geometry.Rect? = null, swipe: Int = 0) {
         val a = tile.action
         when (a.kind) {
-            TileAction.Kind.Screen -> screenRoute(a.arg)?.let { nav.navigate(it) } ?: toast("Unknown screen")
+            TileAction.Kind.Screen ->
+                // On home, the drawer slides up as a layer instead of a new screen.
+                if (a.arg == "apps" && HomeDrawerHub.open()) Unit
+                else screenRoute(a.arg)?.let { nav.navigate(it) } ?: toast("Unknown screen")
             TileAction.Kind.LaunchApp -> app(a.arg)?.let { launch(it, from) } ?: toast("App not installed")
             TileAction.Kind.WakePc -> c.scope.launch {
                 // arg = a saved PC's key, blank = whichever PC is active.
