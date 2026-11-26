@@ -25,7 +25,7 @@ Wake-on-LAN also needs it enabled in the PC's BIOS and network adapter settings.
 
 ## Building
 
-There's no local Android toolchain needed. GitHub Actions builds a debug APK on every push (grab it from the run's **Artifacts**). Pushing a tag like `v0.1.0` also publishes a release APK.
+There's no local Android toolchain needed. GitHub Actions builds a debug APK on every push (grab it from the run's **Artifacts**). Every push to `main` also publishes a release APK on the **Releases** page (`v0.1.<build number>`), so the newest build can be installed straight from a phone browser.
 
 Locally, open the folder in Android Studio, or run:
 

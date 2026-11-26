@@ -1,8 +1,10 @@
 name: Android build
 
 # Every push builds a debug APK (uploaded as a workflow artifact) so compile
-# errors show up immediately. Pushing a tag like v0.1.0 also builds a release
-# APK and publishes it as a GitHub Release for sideloading.
+# errors show up immediately. Every push to main also builds a release APK
+# and publishes it as a GitHub Release (v0.1.<run number>), so the newest
+# build is always one tap away on the Releases page, phone browser included.
+# Pushing your own v* tag does the same with that exact version.
 on:
   push:
     branches: ['**']
@@ -30,14 +32,21 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Version from tag
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Release version
+        id: ver
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
         run: |
-          echo "NEXUS_VERSION_NAME=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="0.1.${{ github.run_number }}"
+          fi
+          echo "NEXUS_VERSION_NAME=$VERSION" >> "$GITHUB_ENV"
           echo "NEXUS_VERSION_CODE=${{ github.run_number }}" >> "$GITHUB_ENV"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Decode signing key
-        if: startsWith(github.ref, 'refs/tags/v') && env.KEYSTORE_B64 != ''
+        if: steps.ver.outputs.tag != '' && env.KEYSTORE_B64 != ''
         run: |
           echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/nexus.keystore"
           echo "NEXUS_KEYSTORE_PATH=$RUNNER_TEMP/nexus.keystore" >> "$GITHUB_ENV"
@@ -51,18 +60,22 @@ jobs:
           path: app/build/outputs/apk/debug/*.apk
 
       - name: Build release APK
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: steps.ver.outputs.tag != ''
         env:
           NEXUS_KEYSTORE_PASSWORD: ${{ secrets.NEXUS_KEYSTORE_PASSWORD }}
           NEXUS_KEY_ALIAS: ${{ secrets.NEXUS_KEY_ALIAS }}
           NEXUS_KEY_PASSWORD: ${{ secrets.NEXUS_KEY_PASSWORD }}
         run: |
           ./gradlew --no-daemon assembleRelease
-          cp app/build/outputs/apk/release/*.apk "nexus-${GITHUB_REF_NAME}.apk"
+          cp app/build/outputs/apk/release/*.apk "nexus-${{ steps.ver.outputs.tag }}.apk"
 
       - name: Publish release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: steps.ver.outputs.tag != ''
         uses: softprops/action-gh-release@v2
         with:
-          files: nexus-${{ github.ref_name }}.apk
+          tag_name: ${{ steps.ver.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: Nexus ${{ steps.ver.outputs.tag }}
+          files: nexus-${{ steps.ver.outputs.tag }}.apk
           generate_release_notes: true
+          make_latest: true
