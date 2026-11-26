@@ -106,7 +106,7 @@ import kotlin.math.roundToInt
  * this only closes via Done or Back.
  */
 @Composable
-fun EditorSheet(title: String, onDismiss: () -> Unit, content: @Composable () -> Unit) {
+fun EditorSheet(title: String, onDismiss: () -> Unit, onDone: () -> Unit = onDismiss, doneLabel: String = "Done", content: @Composable () -> Unit) {
     androidx.compose.ui.window.Dialog(
         onDismissRequest = onDismiss,
         properties = androidx.compose.ui.window.DialogProperties(
@@ -123,7 +123,7 @@ fun EditorSheet(title: String, onDismiss: () -> Unit, content: @Composable () ->
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(title, style = MaterialTheme.typography.headlineSmall, color = Nx.Text, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                NexusButton("Done", icon = Icons.Filled.Check, filled = true, onClick = onDismiss)
+                NexusButton(doneLabel, icon = Icons.Filled.Check, filled = true, onClick = onDone)
             }
             Column(
                 Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 12.dp),
@@ -282,7 +282,13 @@ private fun TileEditor(blockId: String?, existing: TileConfig?, onDismiss: () ->
     val context = LocalContext.current
     val nav = com.eoinknd16.nexus.ui.LocalNav.current
     val runner = remember { TileRunner(context, c, nav, toast = {}) }
-    EditorSheet(if (existing == null) (if (blockId == null) "Add to tray" else "New tile") else "Edit · ${existing.label}", onDismiss) {
+    // Done saves. Back also keeps changes to an existing tile, but doesn't add a new one.
+    EditorSheet(
+        if (existing == null) (if (blockId == null) "Add to tray" else "New tile") else "Edit · ${existing.label}",
+        onDismiss = { if (existing != null) save() else onDismiss() },
+        onDone = { save() },
+        doneLabel = if (existing == null) "Add" else "Done",
+    ) {
         // Live preview: exactly how the tile (or tray slot) will look.
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.width(150.dp).height(140.dp)) {
@@ -440,9 +446,8 @@ private fun TileEditor(blockId: String?, existing: TileConfig?, onDismiss: () ->
         TextRow("Background image URL (optional)", t.image ?: "", "https://…/image.jpg", KeyboardType.Uri) { t = t.copy(image = it.ifBlank { null }) }
 
         Spacer(Modifier.height(16.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            NexusButton("Save", icon = Icons.Filled.Check, filled = true) { save() }
-            if (existing != null) NexusButton("Delete", icon = Icons.Filled.Delete, accent = Nx.Danger) {
+        if (existing != null) {
+            NexusButton("Delete", icon = Icons.Filled.Delete, accent = Nx.Danger) {
                 c.editLook { it.removeTile(blockId, existing.id) }
                 onDismiss()
             }
