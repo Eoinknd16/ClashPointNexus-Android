@@ -7,6 +7,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.foundation.layout.navigationBarsPadding
+import com.eoinknd16.nexus.ui.fx.holoPanel
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -111,3 +115,43 @@ fun EmptyBlock(title: String, body: String? = null, action: (@Composable () -> U
         }
     }
 }
+
+/** "Tile deleted · UNDO" snackbar, shown over every screen for a few seconds. */
+@androidx.compose.runtime.Composable
+fun UndoBar() {
+    val c = appContainer()
+    val prompt by c.undoPrompt.collectAsStateWithLifecycle()
+    androidx.compose.runtime.LaunchedEffect(prompt) {
+        if (prompt != null) {
+            kotlinx.coroutines.delay(6_000)
+            c.undoPrompt.value = null
+        }
+    }
+    androidx.compose.foundation.layout.Box(
+        androidx.compose.ui.Modifier.fillMaxSize().navigationBarsPadding().padding(bottom = 110.dp),
+        contentAlignment = androidx.compose.ui.Alignment.BottomCenter,
+    ) {
+        androidx.compose.animation.AnimatedVisibility(
+            visible = prompt != null,
+            enter = androidx.compose.animation.slideInVertically { it } + androidx.compose.animation.fadeIn(),
+            exit = androidx.compose.animation.slideOutVertically { it } + androidx.compose.animation.fadeOut(),
+        ) {
+            androidx.compose.foundation.layout.Row(
+                androidx.compose.ui.Modifier.padding(horizontal = 16.dp)
+                    .holoPanel(com.eoinknd16.nexus.ui.theme.Nx.Amber, 0.25f)
+                    .padding(start = 16.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            ) {
+                androidx.compose.material3.Text(prompt ?: "", style = androidx.compose.material3.MaterialTheme.typography.bodyMedium, color = com.eoinknd16.nexus.ui.theme.Nx.Text)
+                androidx.compose.foundation.layout.Spacer(androidx.compose.ui.Modifier.width(12.dp))
+                androidx.compose.material3.Text(
+                    com.eoinknd16.nexus.ui.theme.hud("Undo"),
+                    style = androidx.compose.material3.MaterialTheme.typography.labelLarge,
+                    color = com.eoinknd16.nexus.ui.theme.Nx.Amber,
+                    modifier = androidx.compose.ui.Modifier.nexusPress({ c.undoLook() }).padding(horizontal = 12.dp, vertical = 10.dp),
+                )
+            }
+        }
+    }
+}
+

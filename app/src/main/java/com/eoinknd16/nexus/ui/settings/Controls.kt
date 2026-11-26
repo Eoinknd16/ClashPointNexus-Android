@@ -61,8 +61,9 @@ fun SettingLabel(title: String, subtitle: String? = null, modifier: Modifier = M
 
 @Composable
 fun ToggleRow(title: String, checked: Boolean, subtitle: String? = null, onChange: (Boolean) -> Unit) {
+    if (!rowVisible(title, subtitle)) return
     Row(
-        Modifier.fillMaxWidth().nexusPress({ onChange(!checked) }).padding(vertical = 8.dp),
+        Modifier.fillMaxWidth().heightIn(min = 56.dp).nexusPress({ onChange(!checked) }).padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         SettingLabel(title, subtitle, Modifier.weight(1f))
@@ -86,23 +87,77 @@ fun SliderRow(
     steps: Int = 0,
     onChange: (Float) -> Unit,
 ) {
+    if (!rowVisible(title)) return
     // Local value while dragging so the whole UI doesn't re-theme on every pixel.
     var local by remember(value) { mutableStateOf(value) }
+    var typing by remember { mutableStateOf(false) }
+    val span = range.endInclusive - range.start
+    // Fine-step for the − / + buttons: the slider's own step, else 1 unit on big ranges, else 1%.
+    val nudge = when {
+        steps > 0 -> span / (steps + 1)
+        span >= 10f -> 1f
+        else -> span / 100f
+    }
+    fun commit(v: Float) {
+        local = v.coerceIn(range.start, range.endInclusive)
+        onChange(local)
+    }
     Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(title, style = MaterialTheme.typography.bodyLarge, color = Nx.Text, modifier = Modifier.weight(1f))
-            Text(format(local), style = MaterialTheme.typography.labelMedium, color = Nx.Cyan)
+            if (typing) {
+                // Type an exact value (in the slider's own units).
+                var text by remember { mutableStateOf(trimNumber(local)) }
+                val shape = nexusShape(0.4f)
+                BasicTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    singleLine = true,
+                    textStyle = TextStyle(color = Nx.Text, fontSize = 15.sp),
+                    cursorBrush = SolidColor(Nx.Cyan),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = androidx.compose.ui.text.input.ImeAction.Done),
+                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = {
+                        text.replace(',', '.').toFloatOrNull()?.let { commit(it) }
+                        typing = false
+                    }),
+                    modifier = Modifier.width(80.dp).background(Nx.Deep, shape).border(1.dp, Nx.Cyan, shape).padding(horizontal = 8.dp, vertical = 6.dp),
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    hud("Set"), style = MaterialTheme.typography.labelMedium, color = Nx.Cyan,
+                    modifier = Modifier.nexusPress({ text.replace(',', '.').toFloatOrNull()?.let { commit(it) }; typing = false }).padding(6.dp),
+                )
+            } else {
+                Text(
+                    format(local), style = MaterialTheme.typography.labelMedium, color = Nx.Cyan,
+                    modifier = Modifier.nexusPress({ typing = true }).padding(horizontal = 6.dp, vertical = 4.dp),
+                )
+            }
         }
-        Slider(
-            value = local,
-            onValueChange = { local = it },
-            onValueChangeFinished = { onChange(local) },
-            valueRange = range,
-            steps = steps,
-            colors = SliderDefaults.colors(thumbColor = Nx.Cyan, activeTrackColor = Nx.Cyan, inactiveTrackColor = Nx.CyanDim),
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            NudgeButton("−") { commit(local - nudge) }
+            Slider(
+                value = local,
+                onValueChange = { local = it },
+                onValueChangeFinished = { onChange(local) },
+                valueRange = range,
+                steps = steps,
+                colors = SliderDefaults.colors(thumbColor = Nx.Cyan, activeTrackColor = Nx.Cyan, inactiveTrackColor = Nx.CyanDim),
+                modifier = Modifier.weight(1f),
+            )
+            NudgeButton("+") { commit(local + nudge) }
+        }
     }
 }
+
+@Composable
+private fun NudgeButton(symbol: String, onClick: () -> Unit) {
+    Box(Modifier.size(36.dp).nexusPress(onClick), contentAlignment = Alignment.Center) {
+        Text(symbol, style = MaterialTheme.typography.titleLarge, color = Nx.Cyan)
+    }
+}
+
+private fun trimNumber(v: Float): String = if (v == v.roundToInt().toFloat()) v.roundToInt().toString() else "%.2f".format(v).trimEnd('0').trimEnd('.')
 
 /**
  * Pick one of several options. Up to 4 short options show as a segmented
@@ -119,14 +174,17 @@ fun <T> ChoiceRow(
     label: (T) -> String,
     subtitle: String? = null,
     preview: (@Composable (T) -> Unit)? = null,
+    /** Optional headings for long lists (e.g. "Apps", "PC", "Phone"). */
+    group: ((T) -> String)? = null,
     onSelect: (T) -> Unit,
 ) {
-    val segmented = preview == null && options.size <= 4 && options.all { label(it).length <= 12 }
+    if (!rowVisible(title, subtitle)) return
+    val segmented = preview == null && group == null && options.size <= 4 && options.all { label(it).length <= 12 }
     Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
         Text(title, style = MaterialTheme.typography.bodyLarge, color = Nx.Text)
         if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = Nx.Muted)
         Spacer(Modifier.height(8.dp))
-        if (segmented) Segmented(options, selected, label, onSelect) else Picker(options, selected, label, preview, onSelect)
+        if (segmented) Segmented(options, selected, label, onSelect) else Picker(options, selected, label, preview, group, onSelect)
     }
 }
 
@@ -150,7 +208,7 @@ private fun <T> Segmented(options: List<T>, selected: T, label: (T) -> String, o
 }
 
 @Composable
-private fun <T> Picker(options: List<T>, selected: T, label: (T) -> String, preview: (@Composable (T) -> Unit)?, onSelect: (T) -> Unit) {
+private fun <T> Picker(options: List<T>, selected: T, label: (T) -> String, preview: (@Composable (T) -> Unit)?, group: ((T) -> String)?, onSelect: (T) -> Unit) {
     var open by remember { mutableStateOf(false) }
     val shape = nexusShape(0.5f)
     Box {
@@ -172,8 +230,18 @@ private fun <T> Picker(options: List<T>, selected: T, label: (T) -> String, prev
             containerColor = Nx.PanelSolid,
             modifier = Modifier.heightIn(max = 420.dp),
         ) {
-            options.forEach { o ->
+            val ordered = if (group == null) options else options.groupBy(group).values.flatten()
+            var lastGroup: String? = null
+            ordered.forEach { o ->
                 val on = o == selected
+                val g = group?.invoke(o)
+                if (g != null && g != lastGroup) {
+                    lastGroup = g
+                    Text(
+                        hud(g), style = MaterialTheme.typography.labelSmall, color = Nx.Muted,
+                        modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp),
+                    )
+                }
                 androidx.compose.material3.DropdownMenuItem(
                     text = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -219,6 +287,7 @@ fun TextRow(
     singleLine: Boolean = true,
     onChange: (String) -> Unit,
 ) {
+    if (!rowVisible(title)) return
     // Edits locally; commits on every change but debounced by the caller's store.
     var text by remember(value) { mutableStateOf(value) }
     val shape = nexusShape(0.5f)
@@ -249,11 +318,12 @@ fun TextRow(
  */
 @Composable
 fun ColorRow(title: String, hex: String, allowAlpha: Boolean = false, onChange: (String) -> Unit) {
+    if (!rowVisible(title)) return
     var open by remember { mutableStateOf(false) }
     val color = parseColor(hex, Nx.Cyan)
     Column(Modifier.fillMaxWidth()) {
         Row(
-            Modifier.fillMaxWidth().nexusPress({ open = !open }).padding(vertical = 8.dp),
+            Modifier.fillMaxWidth().heightIn(min = 52.dp).nexusPress({ open = !open }).padding(vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(title, style = MaterialTheme.typography.bodyLarge, color = Nx.Text, modifier = Modifier.weight(1f))
@@ -332,22 +402,106 @@ private fun GradientSlider(title: String, value: Float, range: ClosedFloatingPoi
     }
 }
 
-/** Collapsible group header used by Customise. */
+/**
+ * A group of settings. On an overview screen it's one tappable row (icon,
+ * name, current status) that opens the group on its own page; while
+ * searching it shows only matching settings; inside editors it's a
+ * collapsible block.
+ *
+ * @param searchable false for groups made of custom content rather than
+ *   rows; they only show in search when their name or [keywords] match.
+ * @param onReset puts a "Reset to default" button at the bottom of the group.
+ */
 @Composable
-fun Section(title: String, subtitle: String? = null, initiallyOpen: Boolean = false, content: @Composable () -> Unit) {
-    var open by remember { mutableStateOf(initiallyOpen) }
-    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-        Row(
-            Modifier.fillMaxWidth().nexusPress({ open = !open }).clip(nexusShape(0.5f))
-                .background(Nx.Cyan.copy(alpha = if (open) 0.12f else 0.05f)).padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text(hud(title), style = MaterialTheme.typography.labelLarge, color = Nx.Cyan, fontWeight = FontWeight.Bold)
-                if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = Nx.Muted)
+fun Section(
+    title: String,
+    subtitle: String? = null,
+    initiallyOpen: Boolean = false,
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
+    heading: String? = null,
+    keywords: String = "",
+    searchable: Boolean = true,
+    onReset: (() -> Unit)? = null,
+    content: @Composable () -> Unit,
+) {
+    when (val mode = LocalSectionMode.current) {
+        SectionMode.Index -> {
+            val open = LocalOpenSection.current
+            if (heading != null) {
+                Spacer(Modifier.height(14.dp))
+                Text(hud(heading), style = MaterialTheme.typography.labelSmall, color = Nx.Muted, modifier = Modifier.padding(start = 4.dp, bottom = 6.dp))
             }
-            Text(if (open) "−" else "+", style = MaterialTheme.typography.headlineSmall, color = Nx.Cyan)
+            Row(
+                Modifier.fillMaxWidth().padding(vertical = 3.dp).heightIn(min = 64.dp).nexusPress({ open(title) })
+                    .clip(nexusShape(0.5f)).background(Nx.Cyan.copy(alpha = 0.06f)).padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (icon != null) {
+                    Box(Modifier.size(40.dp).clip(nexusShape(0.45f)).background(Nx.Cyan.copy(alpha = 0.12f)), contentAlignment = Alignment.Center) {
+                        androidx.compose.material3.Icon(icon, null, tint = Nx.Cyan)
+                    }
+                    Spacer(Modifier.width(14.dp))
+                }
+                Column(Modifier.weight(1f)) {
+                    Text(title, style = MaterialTheme.typography.titleMedium, color = Nx.Text)
+                    if (!subtitle.isNullOrBlank()) Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = Nx.Muted, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                }
+                Text("›", style = MaterialTheme.typography.headlineSmall, color = Nx.Cyan)
+            }
         }
-        if (open) Column(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 6.dp)) { content() }
+        is SectionMode.Open -> if (mode.title == title) {
+            Column(Modifier.fillMaxWidth()) {
+                content()
+                if (onReset != null) {
+                    Spacer(Modifier.height(16.dp))
+                    com.eoinknd16.nexus.ui.fx.NexusButton("Reset ${title.lowercase()} to default", accent = Nx.Muted, onClick = onReset)
+                }
+            }
+        }
+        is SectionMode.Search -> {
+            val q = mode.query.trim()
+            val nameHit = title.contains(q, true) || (subtitle?.contains(q, true) == true) || keywords.contains(q, true)
+            if (!searchable && !nameHit) return
+            var matched by remember(q) { mutableStateOf(false) }
+            val open = LocalOpenSection.current
+            if (nameHit || matched) {
+                Row(
+                    Modifier.fillMaxWidth().padding(top = 14.dp, bottom = 4.dp).nexusPress({ open(title) }),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(hud(title), style = MaterialTheme.typography.labelLarge, color = Nx.Cyan, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    Text(hud("Open ›"), style = MaterialTheme.typography.labelSmall, color = Nx.Muted)
+                }
+            }
+            androidx.compose.runtime.CompositionLocalProvider(
+                LocalRowQuery provides if (nameHit) "" else q,
+                LocalRowMatched provides { if (!matched) matched = true },
+            ) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 6.dp)) { content() }
+            }
+        }
+        SectionMode.Inline -> {
+            var open by remember { mutableStateOf(initiallyOpen) }
+            Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                Row(
+                    Modifier.fillMaxWidth().heightIn(min = 52.dp).nexusPress({ open = !open }).clip(nexusShape(0.5f))
+                        .background(Nx.Cyan.copy(alpha = if (open) 0.12f else 0.05f)).padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(hud(title), style = MaterialTheme.typography.labelLarge, color = Nx.Cyan, fontWeight = FontWeight.Bold)
+                        if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = Nx.Muted)
+                    }
+                    Text(if (open) "−" else "+", style = MaterialTheme.typography.headlineSmall, color = Nx.Cyan)
+                }
+                if (open) Column(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 6.dp)) {
+                    content()
+                    if (onReset != null) {
+                        Spacer(Modifier.height(12.dp))
+                        com.eoinknd16.nexus.ui.fx.NexusButton("Reset to default", accent = Nx.Muted, onClick = onReset)
+                    }
+                }
+            }
+        }
     }
 }

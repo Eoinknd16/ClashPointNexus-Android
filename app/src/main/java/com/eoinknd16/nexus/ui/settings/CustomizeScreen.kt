@@ -35,6 +35,10 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.border
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -88,13 +92,34 @@ fun CustomizeScreen() {
     val nav = LocalNav.current
     val context = LocalContext.current
     val look = LookState.look
-    fun edit(t: (Look) -> Look) = c.editLook(t)
+    fun edit(undoLabel: String? = null, t: (Look) -> Look) = c.editLook(undoLabel, t)
     fun pal(t: (Palette) -> Palette) = edit { it.copy(palette = t(it.palette)) }
+
+    // Overview -> one group at a time, or search across everything.
+    var openSection by rememberSaveable { mutableStateOf<String?>(null) }
+    var query by rememberSaveable { mutableStateOf("") }
+    val canUndo by c.canUndo.collectAsStateWithLifecycle()
+    androidx.activity.compose.BackHandler(enabled = openSection != null || query.isNotEmpty()) {
+        if (query.isNotEmpty()) query = "" else openSection = null
+    }
+    val mode: SectionMode = when {
+        query.isNotBlank() -> SectionMode.Search(query)
+        openSection != null -> SectionMode.Open(openSection!!)
+        else -> SectionMode.Index
+    }
+    val scroll = rememberScrollState()
+    LaunchedEffect(openSection) { scroll.scrollTo(0) }
 
     NexusBackdrop(intensity = 0.5f) {
         Column(Modifier.fillMaxSize().navigationBarsPadding().imePadding()) {
-            var showPreview by remember { mutableStateOf(true) }
-            ScreenHeader("Customise", "Preset: ${look.presetName}") {
+            var showPreview by rememberSaveable { mutableStateOf(true) }
+            ScreenHeader(openSection ?: "Customise", if (openSection == null) "Preset: ${look.presetName}" else "Changes apply as you go") {
+                if (canUndo) {
+                    Text(
+                        hud("Undo"), style = MaterialTheme.typography.labelMedium, color = Nx.Amber,
+                        modifier = Modifier.nexusPress({ c.undoLook() }).padding(8.dp),
+                    )
+                }
                 Text(
                     hud(if (showPreview) "Hide preview" else "Preview"),
                     style = MaterialTheme.typography.labelSmall, color = Nx.Cyan,
@@ -103,14 +128,26 @@ fun CustomizeScreen() {
             }
             // Pinned above the options so it stays in view while you scroll and tweak.
             if (showPreview) LookPreview(Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
-            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp)) {
+            if (openSection == null) {
+                SearchField(query, { query = it }, Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
+            } else {
+                Text(
+                    hud("‹ All settings"), style = MaterialTheme.typography.labelLarge, color = Nx.Cyan,
+                    modifier = Modifier.padding(horizontal = 12.dp).nexusPress({ openSection = null }).padding(8.dp),
+                )
+            }
+            androidx.compose.runtime.CompositionLocalProvider(
+                LocalSectionMode provides mode,
+                LocalOpenSection provides { t -> query = ""; openSection = t },
+            ) {
+            Column(Modifier.fillMaxSize().verticalScroll(scroll).padding(horizontal = 16.dp, vertical = 8.dp)) {
 
+                if (mode == SectionMode.Index) {
                 // ---- Home layout shortcut ----
                 HoloPanel(Modifier.fillMaxWidth(), accent = Nx.Amber) {
                     Text("Home screen layout", style = MaterialTheme.typography.titleMedium, color = Nx.Text)
                     Text(
-                        "Add, remove, reorder and configure every block (clock, weather, search, widgets, tiles, folders…) " +
-                            "and the tray. Long-press empty space on home does the same.",
+                        "Add, move and set up blocks, tiles, folders, pages and the tray. Long-press empty space on home does the same.",
                         style = MaterialTheme.typography.bodyMedium, color = Nx.Muted,
                     )
                     Spacer(Modifier.height(10.dp))
@@ -119,14 +156,14 @@ fun CustomizeScreen() {
                         nav.popBackStack(Routes.HOME, inclusive = false)
                     }
                 }
-                Spacer(Modifier.height(12.dp))
+                }
 
-                Section("Presets", "Start from a complete style", initiallyOpen = true) {
+                Section("Presets", "Current: ${look.presetName}", icon = androidx.compose.material.icons.Icons.Filled.AutoAwesome, heading = "Style", searchable = false, keywords = "theme style preset") {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Presets.all.forEach { p ->
                             val preview = p.apply(look)
                             Column(
-                                Modifier.width(150.dp).nexusPress({ edit(p.apply) }).clip(com.eoinknd16.nexus.ui.fx.nexusShape(0.6f))
+                                Modifier.width(150.dp).nexusPress({ edit("Preset “${p.name}” applied", p.apply) }).clip(com.eoinknd16.nexus.ui.fx.nexusShape(0.6f))
                                     .background(parseColor(preview.palette.background)).padding(10.dp),
                             ) {
                                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -142,7 +179,7 @@ fun CustomizeScreen() {
                     }
                 }
 
-                Section("Colours", "Every colour slot, with a picker") {
+                Section("Colours", "Accent ${look.palette.accent.uppercase()} · panels ${(look.palette.panelOpacity * 100).roundToInt()}%", icon = androidx.compose.material.icons.Icons.Filled.Palette, onReset = { edit(undoLabel = "Colours reset") { it.copy(palette = Palette()) } }) {
                     ColorRow("Accent", look.palette.accent) { v -> pal { it.copy(accent = v) } }
                     ColorRow("Second accent", look.palette.accent2) { v -> pal { it.copy(accent2 = v) } }
                     ColorRow("Warning / highlight", look.palette.warn) { v -> pal { it.copy(warn = v) } }
@@ -156,7 +193,7 @@ fun CustomizeScreen() {
                     SliderRow("Panel opacity", look.palette.panelOpacity, 0f..1f, { "${(it * 100).roundToInt()}%" }) { v -> pal { it.copy(panelOpacity = v) } }
                 }
 
-                Section("Text", "Fonts, size, label style") {
+                Section("Text", "${look.fonts.body.label} · ${(look.fonts.scale * 100).roundToInt()}%", icon = androidx.compose.material.icons.Icons.Filled.TextFields, onReset = { edit(undoLabel = "Text reset") { it.copy(fonts = com.eoinknd16.nexus.look.Fonts()) } }) {
                     val f = look.fonts
                     ChoiceRow("Headings", FontChoice.entries, f.heading, { it.label }, preview = { FontSample(it) }) { v -> edit { it.copy(fonts = f.copy(heading = v)) } }
                     ChoiceRow("Body text", FontChoice.entries, f.body, { it.label }, preview = { FontSample(it) }) { v -> edit { it.copy(fonts = f.copy(body = v)) } }
@@ -166,7 +203,7 @@ fun CustomizeScreen() {
                     ToggleRow("UPPERCASE labels", f.uppercaseLabels) { v -> edit { it.copy(fonts = f.copy(uppercaseLabels = v)) } }
                 }
 
-                Section("Panels & borders", "Corners, border style, glow") {
+                Section("Panels & borders", "${look.shape.borderStyle.label} · ${look.shape.cornerSize.roundToInt()}dp corners", icon = androidx.compose.material.icons.Icons.Filled.CropSquare, onReset = { edit(undoLabel = "Panels reset") { it.copy(shape = com.eoinknd16.nexus.look.ShapeStyle()) } }) {
                     val s = look.shape
                     ChoiceRow("Border style", com.eoinknd16.nexus.look.BorderStyle.entries, s.borderStyle, { it.label }) { v -> edit { it.copy(shape = s.copy(borderStyle = v, gradientBorder = true)) } }
                     val bslots = listOf("accent" to "Accent (per tile)", "accent2" to "Second accent", "warn" to "Highlight", "text" to "Text", "custom" to "Custom")
@@ -187,7 +224,7 @@ fun CustomizeScreen() {
                     ToggleRow("Corner brackets", s.brackets) { v -> edit { it.copy(shape = s.copy(brackets = v)) } }
                 }
 
-                Section("Backdrop", "The animated background") {
+                Section("Backdrop", "${look.backdrop.style.label}" + if (look.backdrop.animated) "" else " · still", icon = androidx.compose.material.icons.Icons.Filled.Wallpaper, onReset = { edit(undoLabel = "Backdrop reset") { it.copy(backdrop = com.eoinknd16.nexus.look.Backdrop()) } }) {
                     val b = look.backdrop
                     ChoiceRow("Style", BackdropStyle.entries, b.style, { it.label }) { v -> edit { it.copy(backdrop = b.copy(style = v)) } }
                     SliderRow("Intensity", b.intensity, 0f..1.6f, { "${(it * 100).roundToInt()}%" }) { v -> edit { it.copy(backdrop = b.copy(intensity = v)) } }
@@ -200,7 +237,7 @@ fun CustomizeScreen() {
                     ToggleRow("Vignette", b.vignette) { v -> edit { it.copy(backdrop = b.copy(vignette = v)) } }
                 }
 
-                Section("Motion & feel", "Speed, bounce, transitions, haptics") {
+                Section("Motion & feel", if (!look.motion.animations) "Animations off" else "%.1f× speed · ${(look.motion.bounce * 100).roundToInt()}% bounce".format(look.motion.speed), icon = androidx.compose.material.icons.Icons.Filled.Animation, heading = "Feel", onReset = { edit(undoLabel = "Motion reset") { it.copy(motion = com.eoinknd16.nexus.look.Motion()) } }) {
                     val m = look.motion
                     ToggleRow("Animations", m.animations) { v -> edit { it.copy(motion = m.copy(animations = v)) } }
                     SliderRow("Animation speed", m.speed, 0.4f..2.5f, { "%.1f×".format(it) }) { v -> edit { it.copy(motion = m.copy(speed = v)) } }
@@ -215,9 +252,9 @@ fun CustomizeScreen() {
                     SliderRow("Press squish", 1f - m.pressScale, 0f..0.15f, { "${(it * 100).roundToInt()}%" }) { v -> edit { it.copy(motion = m.copy(pressScale = 1f - v)) } }
                 }
 
-                Section("Gestures", "What each swipe does, and where it has to start") { GestureSettings() }
+                Section("Gestures", "Swipes, double-tap and where they start", icon = androidx.compose.material.icons.Icons.Filled.Swipe, searchable = false, keywords = "swipe up down left right double tap pinch zone edge drawer notifications", onReset = { edit(undoLabel = "Gestures reset") { it.copy(gestures = com.eoinknd16.nexus.look.Gestures()) } }) { GestureSettings() }
 
-                Section("Home screen", "Fit, spacing and headings") {
+                Section("Home screen", "${look.home.fit.label} · ${look.home.blockSpacingDp.roundToInt()}dp spacing", icon = androidx.compose.material.icons.Icons.Filled.Home, heading = "Home") {
                     val h = look.home
                     ChoiceRow(
                         "Fitting to the screen", com.eoinknd16.nexus.look.FitMode.entries, h.fit, { it.label },
@@ -231,7 +268,7 @@ fun CustomizeScreen() {
                     SliderRow("Space between blocks", h.blockSpacingDp, 0f..48f, { "${it.roundToInt()}dp" }) { v -> edit { it.copy(home = h.copy(blockSpacingDp = v)) } }
                 }
 
-                Section("Tray", "The bar at the bottom of home") {
+                Section("Tray", if (look.home.dock.visible) "${look.home.dock.items.size} apps · ${look.home.dock.iconSizeDp.roundToInt()}dp icons" else "Hidden", icon = androidx.compose.material.icons.Icons.Filled.Dock) {
                     val d = look.home.dock
                     ToggleRow("Show the tray", d.visible) { v -> edit { it.updateDock { x -> x.copy(visible = v) } } }
                     ToggleRow("App drawer button", d.showDrawerButton) { v -> edit { it.updateDock { x -> x.copy(showDrawerButton = v) } } }
@@ -242,10 +279,10 @@ fun CustomizeScreen() {
                     ToggleRow("Page dots above the tray", hh.showPageDots, "Only shows when you have more than one home page") { v -> edit { it.copy(home = it.home.copy(showPageDots = v)) } }
                     ToggleRow("Fade the page out under the tray", hh.trayFade, "No hard edge where the page meets the tray") { v -> edit { it.copy(home = it.home.copy(trayFade = v)) } }
                     SliderRow("Blur behind the tray", hh.trayBlurDp, 0f..40f, { if (it < 0.5f) "Off" else "${it.roundToInt()}dp" }) { v -> edit { it.copy(home = it.home.copy(trayBlurDp = v)) } }
-                    Text("Add, remove and reorder slots from home edit mode (or long-press a slot).", style = MaterialTheme.typography.labelSmall, color = Nx.Muted)
+                    Hint("Add, remove and reorder slots from home edit mode (or long-press a slot).")
                 }
 
-                Section("App drawer") {
+                Section("App drawer", if (look.drawer.columns == 0) "Auto columns" else "${look.drawer.columns} columns", icon = androidx.compose.material.icons.Icons.Filled.Apps, onReset = { edit(undoLabel = "App drawer reset") { it.copy(drawer = com.eoinknd16.nexus.look.DrawerStyle()) } }) {
                     val d = look.drawer
                     SliderRow("Columns (0 = auto)", d.columns.toFloat(), 0f..7f, { if (it < 0.5f) "auto" else it.roundToInt().toString() }, steps = 6) { v -> edit { it.copy(drawer = d.copy(columns = v.roundToInt())) } }
                     SliderRow("Icon size", d.iconSizeDp, 32f..80f, { "${it.roundToInt()}dp" }) { v -> edit { it.copy(drawer = d.copy(iconSizeDp = v)) } }
@@ -254,7 +291,7 @@ fun CustomizeScreen() {
                     ToggleRow("Open keyboard straight away", d.autoFocusSearch) { v -> edit { it.copy(drawer = d.copy(autoFocusSearch = v)) } }
                 }
 
-                Section("TV", "Board, posters, rows") {
+                Section("TV", "${look.tv.board.label} · ${look.tv.posterWidthDp.roundToInt()}dp posters", icon = androidx.compose.material.icons.Icons.Filled.Movie, heading = "Media") {
                     val t = look.tv
                     ChoiceRow("Board", BoardMode.entries, t.board, { it.label }) { v -> edit { it.copy(tv = t.copy(board = v)) } }
                     SliderRow("Poster size", t.posterWidthDp, 80f..180f, { "${it.roundToInt()}dp" }) { v -> edit { it.copy(tv = t.copy(posterWidthDp = v)) } }
@@ -263,14 +300,14 @@ fun CustomizeScreen() {
                     ToggleRow("Ratings badge", t.showRatings) { v -> edit { it.copy(tv = t.copy(showRatings = v)) } }
                     ToggleRow("Continue watching row", t.showContinue) { v -> edit { it.copy(tv = t.copy(showContinue = v)) } }
                     ToggleRow("Play starts the top source", t.autoPlayTopSource, "Off = always pick from the list") { v -> edit { it.copy(tv = t.copy(autoPlayTopSource = v)) } }
-                    Text("Reorder or hide individual rows with ✎ on the TV screen.", style = MaterialTheme.typography.labelSmall, color = Nx.Muted)
-                    if (t.rowOrder.isNotEmpty() || t.hiddenRows.isNotEmpty() || t.hiddenTypes.isNotEmpty()) {
+                    Hint("Reorder or hide individual rows with ✎ on the TV screen.")
+                    if (LocalRowQuery.current.isBlank() && (t.rowOrder.isNotEmpty() || t.hiddenRows.isNotEmpty() || t.hiddenTypes.isNotEmpty())) {
                         Spacer(Modifier.height(8.dp))
                         NexusButton("Reset row order & hidden rows", icon = Icons.Filled.Refresh) { edit { it.copy(tv = t.copy(rowOrder = emptyList(), hiddenRows = emptyList(), hiddenTypes = emptyList())) } }
                     }
                 }
 
-                Section("Player", "Subtitles, languages, seeking") {
+                Section("Player", "Subtitles ${if (look.player.autoSubtitles) "auto" else "manual"} · skip ${look.player.seekBackSeconds}s/${look.player.seekForwardSeconds}s", icon = androidx.compose.material.icons.Icons.Filled.PlayCircle, onReset = { edit(undoLabel = "Player reset") { it.copy(player = com.eoinknd16.nexus.look.PlayerPrefs()) } }) {
                     val p = look.player
                     TextRow("Audio language (ISO code, blank = phone's)", p.audioLanguage, "e.g. en, fr, ja") { v -> edit { it.copy(player = p.copy(audioLanguage = v.trim())) } }
                     TextRow("Subtitle language", p.subtitleLanguage, "e.g. en") { v -> edit { it.copy(player = p.copy(subtitleLanguage = v.trim())) } }
@@ -288,12 +325,42 @@ fun CustomizeScreen() {
                     ToggleRow("Source name in the player", p.showSourceBadge) { v -> edit { it.copy(player = p.copy(showSourceBadge = v)) } }
                 }
 
-                Section("Weather", look.weather.city.ifBlank { "No location set" }) { WeatherSettings() }
+                Section("Weather", look.weather.city.ifBlank { "No location set" }, icon = androidx.compose.material.icons.Icons.Filled.Cloud, heading = "Other", searchable = false, keywords = "location city temperature celsius fahrenheit units") { WeatherSettings() }
 
-                Section("Backup & share", "Your whole setup as one piece of text") { BackupSettings(context) }
+                Section("Backup & share", "Copy, paste or share your whole setup", icon = androidx.compose.material.icons.Icons.Filled.Backup, searchable = false, keywords = "export import restore copy paste share") { BackupSettings(context) }
 
+                if (mode is SectionMode.Search) {
+                    Spacer(Modifier.height(12.dp))
+                    Hint("Tap a group name to open it.")
+                }
                 Spacer(Modifier.height(32.dp))
             }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SearchField(query: String, onChange: (String) -> Unit, modifier: Modifier = Modifier) {
+    val shape = com.eoinknd16.nexus.ui.fx.nexusShape(0.5f)
+    Row(
+        modifier.fillMaxWidth().clip(shape).background(Nx.Deep).border(1.dp, if (query.isEmpty()) Nx.CyanDim else Nx.Cyan, shape)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Filled.Search, null, tint = Nx.Cyan)
+        Spacer(Modifier.width(10.dp))
+        Box(Modifier.weight(1f)) {
+            if (query.isEmpty()) Text("Search settings (e.g. blur, corners, subtitles)", color = Nx.Muted, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
+            androidx.compose.foundation.text.BasicTextField(
+                value = query, onValueChange = onChange, singleLine = true,
+                textStyle = androidx.compose.ui.text.TextStyle(color = Nx.Text, fontSize = 15.sp),
+                cursorBrush = androidx.compose.ui.graphics.SolidColor(Nx.Cyan),
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        if (query.isNotEmpty()) {
+            Text("✕", color = Nx.Muted, modifier = Modifier.nexusPress({ onChange("") }).padding(horizontal = 6.dp))
         }
     }
 }

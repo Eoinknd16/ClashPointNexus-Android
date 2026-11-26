@@ -85,8 +85,43 @@ class AppContainer(app: Application) {
         scope.launch { updater.checkIfDue() }
     }
 
-    /** Convenience for "change one thing in the look". */
-    fun editLook(transform: (Look) -> Look) {
-        scope.launch { lookStore.update(transform) }
+    // ---- Undo ---------------------------------------------------------------
+    private val lookHistory = ArrayDeque<Look>()
+    private var lastSnapshotAt = 0L
+    /** True when there's a change to undo (drives Undo buttons). */
+    val canUndo = kotlinx.coroutines.flow.MutableStateFlow(false)
+    /** "Tile deleted" etc: shows a snackbar with Undo for a few seconds. */
+    val undoPrompt = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+
+    /**
+     * Change the look. Every change can be undone; quick bursts (typing,
+     * nudging) collapse into one undo step. [undoLabel] also shows the Undo
+     * snackbar -- use it for deletes and other big changes.
+     */
+    fun editLook(undoLabel: String? = null, transform: (Look) -> Look) {
+        scope.launch {
+            val before = lookStore.get()
+            val after = transform(before)
+            if (after == before) return@launch
+            val now = System.currentTimeMillis()
+            if (undoLabel != null || now - lastSnapshotAt > 1_200 || lookHistory.isEmpty()) {
+                lookHistory.addLast(before)
+                while (lookHistory.size > 60) lookHistory.removeFirst()
+            }
+            lastSnapshotAt = now
+            lookStore.set(after)
+            canUndo.value = true
+            if (undoLabel != null) undoPrompt.value = undoLabel
+        }
+    }
+
+    fun undoLook() {
+        scope.launch {
+            val prev = lookHistory.removeLastOrNull() ?: return@launch
+            lookStore.set(prev)
+            lastSnapshotAt = 0L
+            canUndo.value = lookHistory.isNotEmpty()
+            undoPrompt.value = null
+        }
     }
 }

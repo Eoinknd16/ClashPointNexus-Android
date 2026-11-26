@@ -1,5 +1,9 @@
 package com.eoinknd16.nexus.ui.home
 
+import com.eoinknd16.nexus.ui.settings.Hint
+
+import androidx.compose.ui.graphics.Color
+
 import com.eoinknd16.nexus.look.allBlocks
 
 import com.eoinknd16.nexus.look.addPage
@@ -106,7 +110,21 @@ import kotlin.math.roundToInt
  * this only closes via Done or Back.
  */
 @Composable
-fun EditorSheet(title: String, onDismiss: () -> Unit, onDone: () -> Unit = onDismiss, doneLabel: String = "Done", content: @Composable () -> Unit) {
+fun EditorSheet(
+    title: String,
+    onDismiss: () -> Unit,
+    onDone: () -> Unit = onDismiss,
+    doneLabel: String = "Done",
+    /** Shown above the scrolling options and never scrolls away (live previews, tabs). */
+    pinned: (@Composable () -> Unit)? = null,
+    /** "Cancel" link for editors that only save on Done. */
+    onCancel: (() -> Unit)? = null,
+    /** Undo for editors whose changes apply live. */
+    showUndo: Boolean = false,
+    content: @Composable () -> Unit,
+) {
+    val c = appContainer()
+    val canUndo by c.canUndo.collectAsStateWithLifecycle()
     androidx.compose.ui.window.Dialog(
         onDismissRequest = onDismiss,
         properties = androidx.compose.ui.window.DialogProperties(
@@ -119,17 +137,44 @@ fun EditorSheet(title: String, onDismiss: () -> Unit, onDone: () -> Unit = onDis
             Modifier.fillMaxSize().background(Nx.PanelSolid).statusBarsPadding().navigationBarsPadding().imePadding(),
         ) {
             Row(
-                Modifier.fillMaxWidth().background(Nx.Deep).padding(horizontal = 16.dp, vertical = 12.dp),
+                Modifier.fillMaxWidth().background(Nx.Deep).padding(horizontal = 16.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(title, style = MaterialTheme.typography.headlineSmall, color = Nx.Text, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (onCancel != null) {
+                    Text(hud("Cancel"), style = MaterialTheme.typography.labelLarge, color = Nx.Muted, modifier = Modifier.nexusPress(onCancel).padding(end = 12.dp, top = 8.dp, bottom = 8.dp))
+                }
+                Text(title, style = MaterialTheme.typography.titleLarge, color = Nx.Text, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (showUndo && canUndo) {
+                    Text(hud("Undo"), style = MaterialTheme.typography.labelLarge, color = Nx.Amber, modifier = Modifier.nexusPress({ c.undoLook() }).padding(horizontal = 10.dp, vertical = 8.dp))
+                }
                 NexusButton(doneLabel, icon = Icons.Filled.Check, filled = true, onClick = onDone)
+            }
+            if (pinned != null) {
+                Column(Modifier.fillMaxWidth().background(Nx.PanelSolid).padding(horizontal = 16.dp, vertical = 8.dp)) { pinned() }
+                Box(Modifier.fillMaxWidth().height(1.dp).background(Nx.CyanDim))
             }
             Column(
                 Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 12.dp),
             ) {
                 content()
                 Spacer(Modifier.height(32.dp))
+            }
+        }
+    }
+}
+
+/** Tabs for long editors: one row of equal segments. */
+@Composable
+fun EditorTabs(tabs: List<String>, selected: Int, onSelect: (Int) -> Unit) {
+    val shape = nexusShape(0.5f)
+    Row(Modifier.fillMaxWidth().clip(shape).border(1.dp, Nx.CyanDim, shape)) {
+        tabs.forEachIndexed { i, t ->
+            val on = i == selected
+            Box(
+                Modifier.weight(1f).heightIn(min = 44.dp).nexusPress({ onSelect(i) }).background(if (on) Nx.Cyan else Color.Transparent),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(hud(t), style = MaterialTheme.typography.labelMedium, color = if (on) Nx.Void else Nx.Cyan, maxLines = 1)
             }
         }
     }
@@ -157,7 +202,7 @@ private fun BlockEditor(block: HomeBlock, onDismiss: () -> Unit, onEdit: (HomeEd
     val context = LocalContext.current
     val nav = com.eoinknd16.nexus.ui.LocalNav.current
     val runner = remember { TileRunner(context, c, nav, toast = {}) }
-    EditorSheet(block.kindLabel, onDismiss) {
+    EditorSheet(block.kindLabel, onDismiss, showUndo = true) {
         // Live preview of this block with the settings below applied.
         if (block !is HomeBlock.Widget && block !is HomeBlock.Spacer) {
             Box(
@@ -319,28 +364,46 @@ private fun TileEditor(blockId: String?, existing: TileConfig?, onDismiss: () ->
     val context = LocalContext.current
     val nav = com.eoinknd16.nexus.ui.LocalNav.current
     val runner = remember { TileRunner(context, c, nav, toast = {}) }
-    // Done saves. Back also keeps changes to an existing tile, but doesn't add a new one.
+    val isFolder = t.action.kind == TileAction.Kind.Folder
+    val tabs = buildList {
+        add("Does")
+        if (isFolder) add("Folder")
+        add("Look")
+        add("Border")
+        if (blockId != null) add("Size")
+    }
+    var tabName by remember { mutableStateOf("Does") }
+    if (tabName !in tabs) tabName = "Does"
+    // Done saves. Back also keeps changes to an existing tile (but doesn't add a new one); Cancel throws them away.
     EditorSheet(
-        if (existing == null) (if (blockId == null) "Add to tray" else "New tile") else "Edit · ${existing.label}",
+        if (existing == null) (if (blockId == null) "Add to tray" else "New tile") else "Edit tile",
         onDismiss = { if (existing != null) save() else onDismiss() },
         onDone = { save() },
         doneLabel = if (existing == null) "Add" else "Done",
+        onCancel = onDismiss,
+        pinned = {
+            // Live preview: exactly how the tile (or tray slot) will look.
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.width(130.dp).height(118.dp)) {
+                    TileView(tile = t, runner = runner, showSublabel = true, modifier = Modifier.fillMaxWidth().height(118.dp), onOpenFolder = { _, _ -> }, onLongPress = {})
+                }
+                Spacer(Modifier.width(20.dp))
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    TileIcon(t, runner, LookState.palette.slot(t.color), LookState.look.home.dock.iconSizeDp.dp)
+                    Text(hud("In the tray"), style = MaterialTheme.typography.labelSmall, color = Nx.Muted)
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+            EditorTabs(tabs, tabs.indexOf(tabName)) { tabName = tabs[it] }
+        },
     ) {
-        // Live preview: exactly how the tile (or tray slot) will look.
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.width(150.dp).height(140.dp)) {
-                TileView(tile = t, runner = runner, showSublabel = true, modifier = Modifier.fillMaxWidth().height(140.dp), onOpenFolder = { _, _ -> }, onLongPress = {})
-            }
-            Spacer(Modifier.width(20.dp))
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                TileIcon(t, runner, LookState.palette.slot(t.color), LookState.look.home.dock.iconSizeDp.dp)
-                Text(hud("In the tray"), style = MaterialTheme.typography.labelSmall, color = Nx.Muted)
-            }
-        }
+        when (tabName) {
+        "Does" -> {
         Spacer(Modifier.height(12.dp))
         ChoiceRow(
             "What it does", TileAction.Kind.entries, t.action.kind, { it.label },
             preview = { k -> Icon(IconCatalog.icon(defaultIcon(k, "bolt")), null, tint = Nx.Cyan, modifier = Modifier.size(20.dp)) },
+            group = ::actionGroup,
         ) { k ->
             val arg = when (k) {
                 TileAction.Kind.Screen -> SCREEN_TARGETS.first().first
@@ -402,11 +465,12 @@ private fun TileEditor(blockId: String?, existing: TileConfig?, onDismiss: () ->
                         )
                     }
                 }
-                ChoiceRow("Opening animation", FolderAnimation.entries, t.folderAnimation, { it.label }) { t = t.copy(folderAnimation = it) }
-                ChoiceRow("Layout", FolderStyle.entries, t.folderStyle, { it.label }) { t = t.copy(folderStyle = it) }
-                if (t.folderStyle == FolderStyle.Grid) {
-                    SliderRow("Columns", t.folderColumns.toFloat(), 2f..6f, { it.roundToInt().toString() }, steps = 3) { t = t.copy(folderColumns = it.roundToInt()) }
-                }
+                Hint("Tile style and how the folder opens are on the Folder tab.")
+            }
+            else -> {}
+        }
+        }
+        "Folder" -> {
                 HudLabel("On the tile")
                 ChoiceRow("Tile style", com.eoinknd16.nexus.look.FolderTileStyle.entries, t.folderTileStyle, { it.label }) { t = t.copy(folderTileStyle = it) }
                 if (t.folderTileStyle == com.eoinknd16.nexus.look.FolderTileStyle.Icon) {
@@ -420,8 +484,13 @@ private fun TileEditor(blockId: String?, existing: TileConfig?, onDismiss: () ->
                     ToggleRow("Tilt the phone to move them", t.folderPhysicsTilt) { t = t.copy(folderPhysicsTilt = it) }
                     SliderRow("React to the screen moving", t.folderPhysicsInertia, 0f..3f, { if (it < 0.05f) "Off" else "${(it * 100).roundToInt()}%" }) { t = t.copy(folderPhysicsInertia = it) }
                 }
-                HudLabel("When opened")
-                HudLabel("When open")
+                Spacer(Modifier.height(8.dp))
+                HudLabel("When it opens")
+                ChoiceRow("Opening animation", FolderAnimation.entries, t.folderAnimation, { it.label }) { t = t.copy(folderAnimation = it) }
+                ChoiceRow("Layout", FolderStyle.entries, t.folderStyle, { it.label }) { t = t.copy(folderStyle = it) }
+                if (t.folderStyle == FolderStyle.Grid) {
+                    SliderRow("Columns", t.folderColumns.toFloat(), 2f..6f, { it.roundToInt().toString() }, steps = 3) { t = t.copy(folderColumns = it.roundToInt()) }
+                }
                 ChoiceRow("Background", com.eoinknd16.nexus.look.FolderBackground.entries, t.folderBackground, { it.label }) { t = t.copy(folderBackground = it) }
                 SliderRow(
                     "Blur behind",
@@ -446,17 +515,13 @@ private fun TileEditor(blockId: String?, existing: TileConfig?, onDismiss: () ->
                         folderTileStyle = src.folderTileStyle, folderTileIconScale = src.folderTileIconScale, folderTileLabel = src.folderTileLabel,
                         folderPhysicsBounce = src.folderPhysicsBounce, folderPhysicsTilt = src.folderPhysicsTilt, folderPhysicsInertia = src.folderPhysicsInertia,
                     )
-                    c.editLook { l0 ->
+                    c.editLook("Style copied to every folder") { l0 ->
                         val l = l0.mapAllBlocks { list -> list.map { b -> if (b is HomeBlock.Tiles) b.copy(tiles = b.tiles.map { it.styled() }) else b } }
                         l.copy(home = l.home.copy(dock = l.home.dock.copy(items = l.home.dock.items.map { it.styled() })))
                     }
                 }
-            }
-            else -> {}
         }
-
-        Spacer(Modifier.height(8.dp))
-        HudLabel("Look")
+        "Look" -> {
         TextRow("Label", t.label) { t = t.copy(label = it) }
         TextRow("Sub-label", t.sublabel) { t = t.copy(sublabel = it) }
         val slots = listOf("accent" to "Accent", "accent2" to "Second accent", "warn" to "Highlight", "good" to "Success", "danger" to "Danger", "muted" to "Muted", "text" to "Text", "custom" to "Custom colour")
@@ -497,7 +562,10 @@ private fun TileEditor(blockId: String?, existing: TileConfig?, onDismiss: () ->
             "Entrance animation", listOf(inheritE) + com.eoinknd16.nexus.look.Entrance.entries.map { it.name },
             t.entrance?.name ?: inheritE, { if (it == inheritE) "Same as everywhere" else com.eoinknd16.nexus.look.Entrance.valueOf(it).label },
         ) { v -> t = t.copy(entrance = if (v == inheritE) null else com.eoinknd16.nexus.look.Entrance.valueOf(v)) }
-        HudLabel("Border (this tile only)")
+        TextRow("Background image URL (optional)", t.image ?: "", "https://…/image.jpg", KeyboardType.Uri) { t = t.copy(image = it.ifBlank { null }) }
+        }
+        "Border" -> {
+        Hint("Overrides the border for this tile only. Everything else follows Customise › Panels & borders.")
         val b = t.border ?: com.eoinknd16.nexus.look.BorderOverride()
         ChoiceRow(
             "Style", listOf(inheritE) + com.eoinknd16.nexus.look.BorderStyle.entries.map { it.name },
@@ -507,21 +575,22 @@ private fun TileEditor(blockId: String?, existing: TileConfig?, onDismiss: () ->
         SliderRow("Glow", b.glow ?: LookState.look.shape.glow, 0f..1.5f, { "${(it * 100).toInt()}%" }) { v -> t = t.copy(border = b.copy(glow = v)) }
         ColorRow("Border colour", b.color?.takeIf { it.startsWith("#") } ?: LookState.palette.slot(t.color).toHex()) { v -> t = t.copy(border = b.copy(color = v)) }
         if (t.border != null) NexusButton("Reset border to default", accent = Nx.Muted) { t = t.copy(border = null) }
-        Spacer(Modifier.height(8.dp))
-        if (blockId != null) {
+        }
+        "Size" -> if (blockId != null) {
             val cols = (LookState.look.allBlocks.firstOrNull { it.id == blockId } as? HomeBlock.Tiles)?.columns?.coerceIn(1, 6) ?: 4
             HudLabel("Size in the grid")
             SliderRow("Width", t.colSpan.toFloat().coerceAtMost(cols.toFloat()), 1f..cols.toFloat().coerceAtLeast(2f), { "${it.roundToInt()} column" + if (it.roundToInt() > 1) "s" else "" }) { t = t.copy(colSpan = it.roundToInt()) }
             SliderRow("Height", t.rowSpan.toFloat(), 1f..4f, { "${it.roundToInt()} row" + if (it.roundToInt() > 1) "s" else "" }) { t = t.copy(rowSpan = it.roundToInt()) }
+            Hint("Other tiles fill in around a bigger one. Icon and text sizes for the whole block are in the block's settings.")
         }
-        TextRow("Background image URL (optional)", t.image ?: "", "https://…/image.jpg", KeyboardType.Uri) { t = t.copy(image = it.ifBlank { null }) }
+        }
 
         Spacer(Modifier.height(16.dp))
         // Several PC tiles in this block? Merge them into one "PC controls" tile.
         val pcTiles = (LookState.look.allBlocks.firstOrNull { it.id == blockId } as? HomeBlock.Tiles)?.tiles?.filter { isPcTile(it) }.orEmpty()
         if (existing != null && blockId != null && isPcTile(existing) && pcTiles.size > 1) {
             NexusButton("Combine ${pcTiles.size} PC tiles into one", icon = Icons.Filled.Check, accent = Nx.Lime) {
-                c.editLook { l ->
+                c.editLook("PC tiles combined") { l ->
                     l.updateBlock(blockId) { b ->
                         if (b !is HomeBlock.Tiles) b else b.copy(
                             tiles = b.tiles.mapNotNull { x ->
@@ -539,8 +608,8 @@ private fun TileEditor(blockId: String?, existing: TileConfig?, onDismiss: () ->
             Spacer(Modifier.height(10.dp))
         }
         if (existing != null) {
-            NexusButton("Delete", icon = Icons.Filled.Delete, accent = Nx.Danger) {
-                c.editLook { it.removeTile(blockId, existing.id) }
+            NexusButton("Delete tile", icon = Icons.Filled.Delete, accent = Nx.Danger) {
+                c.editLook("“${existing.label.ifBlank { "Tile" }}” deleted") { it.removeTile(blockId, existing.id) }
                 onDismiss()
             }
         }
@@ -635,7 +704,7 @@ private fun DockEditor(onDismiss: () -> Unit, onEdit: (HomeEdit) -> Unit) {
     val c = appContainer()
     val d = LookState.look.home.dock
     fun set(transform: (com.eoinknd16.nexus.look.DockConfig) -> com.eoinknd16.nexus.look.DockConfig) = c.editLook { it.updateDock(transform) }
-    EditorSheet("Tray", onDismiss) {
+    EditorSheet("Tray", onDismiss, showUndo = true) {
         ToggleRow("Show the tray", d.visible) { v -> set { it.copy(visible = v) } }
         ToggleRow("App drawer button", d.showDrawerButton) { v -> set { it.copy(showDrawerButton = v) } }
         ToggleRow("Labels under icons", d.showLabels) { v -> set { it.copy(showLabels = v) } }
@@ -739,7 +808,7 @@ private fun PagesEditor(onDismiss: () -> Unit) {
     val c = appContainer()
     val home = LookState.look.home
     val pager = com.eoinknd16.nexus.look.HomePager
-    EditorSheet("Home pages", onDismiss) {
+    EditorSheet("Home pages", onDismiss, showUndo = true) {
         Text(
             "Extra pages start blank. Get to them with a swipe (Customise › Gestures › \"Page: …\" or Next page), a tile, or the dots above the tray. Swipe back the other way, press Back or Home to return.",
             style = MaterialTheme.typography.bodySmall, color = Nx.Muted,
@@ -763,7 +832,7 @@ private fun PagesEditor(onDismiss: () -> Unit) {
                     EditIcon(Icons.Filled.Delete, "Delete page", {
                         if (pager.current == page.id) pager.go("main")
                         page.blocks.filterIsInstance<HomeBlock.Widget>().forEach { c.widgets.delete(it.appWidgetId) }
-                        c.editLook { it.removePage(page.id) }
+                        c.editLook("Page “${page.name}” deleted") { it.removePage(page.id) }
                     }, Nx.Danger)
                 }
             }
@@ -787,12 +856,29 @@ private fun BlockSizeSection(blockId: String) {
     fun set(v: com.eoinknd16.nexus.look.BlockSize) = c.editLook { l ->
         l.copy(home = l.home.copy(blockSizes = l.home.blockSizes + (blockId to v)))
     }
-    HudLabel("Size")
+    com.eoinknd16.nexus.ui.settings.Section(
+        "Size & position",
+        if (size == com.eoinknd16.nexus.look.BlockSize()) "Full width · 100%" else "${size.widthPct.roundToInt()}% wide · ${(size.scale * 100).roundToInt()}% scale",
+    ) {
     SliderRow("Width", size.widthPct, 20f..100f, { "${it.roundToInt()}% of screen" }) { set(size.copy(widthPct = it)) }
     if (size.widthPct < 99.5f || kotlin.math.abs(size.scale - 1f) > 0.01f) {
         ChoiceRow("Sit", com.eoinknd16.nexus.look.Align.entries, size.align, { when (it) { com.eoinknd16.nexus.look.Align.Start -> "Left"; com.eoinknd16.nexus.look.Align.Center -> "Centre"; else -> "Right" } }) { set(size.copy(align = it)) }
     }
     SliderRow("Scale", size.scale, 0.4f..2f, { "${(it * 100).roundToInt()}%" }) { set(size.copy(scale = it)) }
     if (size != com.eoinknd16.nexus.look.BlockSize()) NexusButton("Reset size", accent = Nx.Muted) { set(com.eoinknd16.nexus.look.BlockSize()) }
-    Spacer(Modifier.height(8.dp))
+    }
+    Spacer(Modifier.height(4.dp))
+}
+
+
+/** Headings for the "What it does" list. */
+private fun actionGroup(k: TileAction.Kind): String = when (k) {
+    TileAction.Kind.LaunchApp, TileAction.Kind.Folder -> "Apps"
+    TileAction.Kind.Screen, TileAction.Kind.Page -> "Nexus"
+    TileAction.Kind.PcHub, TileAction.Kind.WakePc, TileAction.Kind.SwitchPc, TileAction.Kind.PcPower,
+    TileAction.Kind.PcNav, TileAction.Kind.PcScreen -> "PC"
+    TileAction.Kind.Settings, TileAction.Kind.Notifications, TileAction.Kind.QuickSettings,
+    TileAction.Kind.LockScreen, TileAction.Kind.Recents -> "Phone"
+    TileAction.Kind.Url, TileAction.Kind.WebSearch -> "Web"
+    else -> "Other"
 }

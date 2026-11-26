@@ -42,6 +42,7 @@ import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.Widgets
 import androidx.compose.material.icons.filled.ViewCarousel
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -195,7 +196,8 @@ fun HomeScreen() {
                 onEdit = { editing = HomeEdit.Block(block.id) },
                 onRemove = {
                     if (block is HomeBlock.Widget) c.widgets.delete(block.appWidgetId)
-                    c.editLook { it.removeBlock(block.id) }
+                    // Widgets can't come back once released, so no Undo for those.
+                    c.editLook(if (block is HomeBlock.Widget) null else "${block.kindLabel} removed") { it.removeBlock(block.id) }
                 },
             ) {
                 SizedBlock(home.blockSizes[block.id]) {
@@ -411,6 +413,9 @@ private fun EditBar(pageName: String?, onDone: () -> Unit, onAddBlock: () -> Uni
         EditIcon(Icons.Filled.Add, "Add block", onAddBlock)
         EditIcon(Icons.Filled.Widgets, "Add widget", onAddWidget)
         EditIcon(Icons.Filled.ViewCarousel, "Pages", onPages)
+        val c = appContainer()
+        val canUndo by c.canUndo.collectAsStateWithLifecycle()
+        if (canUndo) EditIcon(Icons.AutoMirrored.Filled.Undo, "Undo", { c.undoLook() })
         EditIcon(Icons.Filled.Palette, "Customise", onCustomise)
         EditIcon(Icons.Filled.Check, "Done", onDone, Nx.Lime)
     }
