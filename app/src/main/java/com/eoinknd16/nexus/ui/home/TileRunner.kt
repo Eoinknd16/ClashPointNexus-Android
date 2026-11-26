@@ -104,14 +104,17 @@ class TileRunner(
             TileAction.Kind.Screen -> screenRoute(a.arg)?.let { nav.navigate(it) } ?: toast("Unknown screen")
             TileAction.Kind.LaunchApp -> app(a.arg)?.let { launch(it, from) } ?: toast("App not installed")
             TileAction.Kind.WakePc -> c.scope.launch {
-                val cfg = c.pcStore.get()
-                if (cfg.macs.isEmpty()) {
-                    toast(if (cfg.isPaired) "No MAC address on file" else "Link your PC first")
-                } else {
-                    val subnet = Regex("^(\\d+\\.\\d+\\.\\d+)\\.\\d+$").find(cfg.host)?.groupValues?.get(1)?.let { "$it.255" }
-                    val sent = runCatching { WakeOnLan.wake(cfg.macs, listOfNotNull(subnet)) }.getOrDefault(0)
-                    toast(if (sent > 0) "Wake packet sent" else "Couldn't send wake packet")
+                // arg = a saved PC's key, blank = whichever PC is active.
+                val cfg = c.pc.all().firstOrNull { it.key == a.arg } ?: c.pcStore.get()
+                when (val sent = c.pc.wake(cfg)) {
+                    -1 -> toast(if (cfg.isPaired) "No MAC address on file for ${cfg.displayName}" else "Link your PC first")
+                    0 -> toast("Couldn't send wake packet")
+                    else -> toast("Waking ${cfg.displayName}")
                 }
+            }
+            TileAction.Kind.SwitchPc -> c.scope.launch {
+                val to = if (a.arg.isBlank() || a.arg == "next") c.pc.switchNext() else c.pc.switchTo(a.arg)
+                toast(if (to == null) "Link a PC first" else "Now controlling ${to.displayName}")
             }
             TileAction.Kind.PcNav -> c.scope.launch {
                 runCatching { c.pc.nav(a.arg) }.onFailure { toast("PC didn't respond") }

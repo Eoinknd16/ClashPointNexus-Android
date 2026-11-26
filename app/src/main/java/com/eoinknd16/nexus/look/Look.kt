@@ -423,6 +423,7 @@ data class TileAction(val kind: Kind, val arg: String = "") {
         Screen("Open Nexus screen"),
         LaunchApp("Launch app"),
         WakePc("Wake PC"),
+        SwitchPc("Switch PC"),
         PcNav("PC remote button"),
         PcScreen("Show PC screen"),
         Url("Open link"),

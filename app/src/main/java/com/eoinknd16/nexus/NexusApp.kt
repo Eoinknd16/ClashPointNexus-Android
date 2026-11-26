@@ -35,7 +35,9 @@ class AppContainer(app: Application) {
     private val ds = app.nexusDataStore
 
     val pcStore = JsonStore(ds, "pc_link", PcLinkConfig.serializer(), PcLinkConfig(), scope)
-    val pc = PcLinkClient(pcStore)
+    /** Every paired PC (the active one is [pcStore]). */
+    val pcSaved = JsonStore(ds, "pc_saved", com.eoinknd16.nexus.link.SavedPcs.serializer(), com.eoinknd16.nexus.link.SavedPcs(), scope)
+    val pc = PcLinkClient(pcStore, pcSaved)
 
     val media = MediaRepository(
         addonStore = JsonStore(ds, "addons", MediaRepository.addonListSerializer, emptyList(), scope),

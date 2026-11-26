@@ -23,6 +23,8 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.ui.draw.clip
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Extension
@@ -149,28 +151,68 @@ private fun PcSection() {
     val c = appContainer()
     val scope = rememberCoroutineScope()
     val pc by c.pcStore.state.collectAsStateWithLifecycle()
+    val saved by c.pcSaved.state.collectAsStateWithLifecycle()
+    val pcs = com.eoinknd16.nexus.link.allPcs(pc, saved)
     var status by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
+    var adding by rememberSaveable { mutableStateOf(false) }
+    var renaming by remember { mutableStateOf<String?>(null) }
+    val online = remember { androidx.compose.runtime.mutableStateMapOf<String, Boolean>() }
+    LaunchedEffect(pcs.map { it.key to it.host }) {
+        pcs.forEach { p -> launch { online[p.key] = c.pc.isOnline(p) } }
+    }
 
     Column {
-        HudLabel("Living room PC")
+        HudLabel(if (pcs.size > 1) "Your PCs" else "Living room PC")
         Spacer(Modifier.height(10.dp))
         HoloPanel(Modifier.fillMaxWidth()) {
-            if (pc.isPaired) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.Computer, null, tint = Nx.Lime)
-                    Spacer(Modifier.width(10.dp))
+            pcs.forEach { p ->
+                val active = p.key == pc.key
+                Row(
+                    Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                        .nexusPress({ if (!active) scope.launch { c.pc.switchTo(p.key); status = "Now controlling ${p.displayName}" } })
+                        .holoPanel(if (active) Nx.Lime else Nx.CyanDim, if (active) 0.15f else 0f).padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box {
+                        Icon(Icons.Filled.Computer, null, tint = if (active) Nx.Lime else Nx.Cyan)
+                        Box(
+                            Modifier.align(Alignment.BottomEnd).size(8.dp).clip(androidx.compose.foundation.shape.CircleShape)
+                                .background(when (online[p.key]) { true -> Nx.Lime; false -> Nx.Danger; null -> Nx.Muted }),
+                        )
+                    }
+                    Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(pc.name.ifBlank { "PC" }, style = MaterialTheme.typography.titleMedium, color = Nx.Text)
-                        Text("${pc.host}:${pc.port}", style = MaterialTheme.typography.labelMedium, color = Nx.Cyan)
+                        if (renaming == p.key) {
+                            var text by remember(p.key) { mutableStateOf(p.displayName) }
+                            Field("Name", text, { text = it }, KeyboardType.Text)
+                            Spacer(Modifier.height(6.dp))
+                            NexusButton("Save name", filled = true) { scope.launch { c.pc.rename(p.key, text.trim()); renaming = null } }
+                        } else {
+                            Text(p.displayName, style = MaterialTheme.typography.titleMedium, color = Nx.Text)
+                            Text(
+                                hud("${p.host}:${p.port}" + when (online[p.key]) { true -> " · online"; false -> " · offline"; null -> "" } + if (active) " · active" else ""),
+                                style = MaterialTheme.typography.labelSmall, color = if (active) Nx.Lime else Nx.Muted,
+                            )
+                        }
+                    }
+                    if (renaming != p.key) {
+                        Box(Modifier.size(36.dp).nexusPress({ renaming = p.key }), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Filled.Edit, "Rename", tint = Nx.Muted)
+                        }
+                        Box(Modifier.size(36.dp).nexusPress({ scope.launch { c.pc.forget(p.key); status = "Forgot ${p.displayName}" } }), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Filled.LinkOff, "Forget this PC", tint = Nx.Danger)
+                        }
                     }
                 }
+            }
+            if (pc.isPaired) {
                 Text(
                     if (pc.macs.isEmpty()) "No MAC address for wake-on-LAN yet" else "Wake targets: ${pc.macs.joinToString()}",
                     style = MaterialTheme.typography.labelSmall, color = Nx.Muted,
                 )
                 Text(
-                    "Wake-on-LAN not working? On the PC: Settings › Phone Link › Set Up Wake-on-LAN.",
+                    "Tap a PC to control it. The remote, Send to TV and Wake all use the active one. Wake-on-LAN not working? On that PC: Settings › Phone Link › Set Up Wake-on-LAN.",
                     style = MaterialTheme.typography.labelSmall, color = Nx.Muted,
                 )
                 Spacer(Modifier.height(12.dp))
@@ -179,14 +221,16 @@ private fun PcSection() {
                         busy = true
                         scope.launch {
                             status = runCatching { c.media.importAddonsFromPc() }
-                                .fold({ "Imported $it addons from the PC" }, { "Import failed (${it.describe()})" })
+                                .fold({ "Imported $it addons from ${pc.displayName}" }, { "Import failed (${it.describe()})" })
                             busy = false
                         }
                     }
-                    NexusButton("Unlink", icon = Icons.Filled.LinkOff, accent = Nx.Danger) { scope.launch { c.pc.unpair() } }
+                    NexusButton(if (adding) "Cancel" else "Add another PC", icon = Icons.Filled.Link, accent = Nx.Cyan) { adding = !adding }
                 }
-            } else {
-                AutoPair(onStatus = { status = it })
+            }
+            if (!pc.isPaired || adding) {
+                if (pc.isPaired) Spacer(Modifier.height(12.dp))
+                AutoPair(onStatus = { status = it; if (it?.startsWith("Linked") == true) adding = false })
             }
             status?.let {
                 Spacer(Modifier.height(10.dp))
@@ -240,10 +284,23 @@ private fun AutoPair(onStatus: (String?) -> Unit) {
         if (scanning) CircularProgressIndicator(color = Nx.Cyan, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
         else Box(Modifier.size(36.dp).nexusPress({ scan() }), contentAlignment = Alignment.Center) { Icon(Icons.Filled.Refresh, "Scan again", tint = Nx.Cyan) }
     }
+    val activePc by c.pcStore.state.collectAsStateWithLifecycle()
+    val savedPcs by c.pcSaved.state.collectAsStateWithLifecycle()
+    val known = com.eoinknd16.nexus.link.allPcs(activePc, savedPcs)
     found.forEach { pc ->
+        val already = known.firstOrNull { it.pcId.isNotBlank() && it.pcId == pc.pcId }
         Spacer(Modifier.height(8.dp))
         Row(
             Modifier.fillMaxWidth().nexusPress({
+                if (already != null) {
+                    // Already paired: just switch to it (and pick up its current address).
+                    scope.launch {
+                        c.pc.switchTo(already.key)
+                        c.pcStore.update { it.copy(host = pc.host, port = pc.port) }
+                        onStatus("Linked to ${already.displayName}")
+                    }
+                    return@nexusPress
+                }
                 pairing = pc
                 code = null
                 onStatus(null)
@@ -262,7 +319,7 @@ private fun AutoPair(onStatus: (String?) -> Unit) {
                 Text(pc.name, style = MaterialTheme.typography.titleMedium, color = Nx.Text)
                 Text(hud("${pc.host} · Nexus ${pc.version}"), style = MaterialTheme.typography.labelSmall, color = Nx.Muted)
             }
-            Text(hud("Link"), style = MaterialTheme.typography.labelMedium, color = Nx.Lime)
+            Text(hud(if (already != null) "Paired · use" else "Link"), style = MaterialTheme.typography.labelMedium, color = Nx.Lime)
         }
     }
     if (!scanning && found.isEmpty()) {

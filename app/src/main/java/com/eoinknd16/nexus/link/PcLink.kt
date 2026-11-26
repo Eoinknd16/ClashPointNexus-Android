@@ -24,9 +24,14 @@ data class PcLinkConfig(
     val macs: List<String> = emptyList(),
     /** The PC's stable id, so it can be found again on the LAN if its IP changes. */
     val pcId: String = "",
+    /** Your own name for it ("Living room", "Office"); blank = the PC's name. */
+    val nickname: String = "",
 ) {
     val isPaired: Boolean get() = host.isNotBlank() && token.isNotBlank()
     val baseUrl: String get() = "http://$host:$port"
+    /** Stable identity for the saved list. */
+    val key: String get() = pcId.ifBlank { "$host:$port" }
+    val displayName: String get() = nickname.ifBlank { name.ifBlank { "PC" } }
 
     companion object {
         /** Must match REMOTE_API_PORT in the PC build (src/main/remote/server.ts). */
@@ -35,6 +40,14 @@ data class PcLinkConfig(
         const val DISCOVERY_PORT = 11481
     }
 }
+
+/** Every PC you've paired. The active one also lives in its own store (what everything else uses). */
+@Serializable
+data class SavedPcs(val pcs: List<PcLinkConfig> = emptyList())
+
+/** Active first, then the rest, without duplicates. */
+fun allPcs(active: PcLinkConfig, saved: SavedPcs): List<PcLinkConfig> =
+    (listOf(active).filter { it.isPaired } + saved.pcs.filter { it.isPaired }).distinctBy { it.key }
 
 // ---- Wire types for the PC's remote API (src/main/remote/server.ts) --------
 
@@ -110,7 +123,65 @@ data class ScreenRequest(val screen: String)
 data class OkResponse(val ok: Boolean = true, val error: String? = null)
 
 /** HTTP client for the PC's remote API. Every call needs a paired config. */
-class PcLinkClient(private val store: JsonStore<PcLinkConfig>) {
+class PcLinkClient(private val store: JsonStore<PcLinkConfig>, val saved: JsonStore<SavedPcs>) {
+
+    /** Keep the saved list in step with a PC's latest details. */
+    private suspend fun remember(cfg: PcLinkConfig) {
+        if (!cfg.isPaired) return
+        saved.update { s ->
+            val old = s.pcs.firstOrNull { it.key == cfg.key }
+            val merged = if (old != null && cfg.nickname.isBlank()) cfg.copy(nickname = old.nickname) else cfg
+            SavedPcs(if (old == null) s.pcs + merged else s.pcs.map { if (it.key == cfg.key) merged else it })
+        }
+    }
+
+    private suspend fun setActive(cfg: PcLinkConfig) {
+        store.set(cfg)
+        remember(cfg)
+    }
+
+    suspend fun all(): List<PcLinkConfig> = allPcs(store.get(), saved.get())
+
+    /** Make [key] the PC the remote, Send to TV and Wake talk to. */
+    suspend fun switchTo(key: String): PcLinkConfig? {
+        val current = store.get()
+        val target = all().firstOrNull { it.key == key } ?: return null
+        remember(current)
+        store.set(target)
+        return target
+    }
+
+    /** "next" cycles through your PCs. */
+    suspend fun switchNext(): PcLinkConfig? {
+        val list = all()
+        if (list.size < 2) return list.firstOrNull()
+        val i = list.indexOfFirst { it.key == store.get().key }
+        return switchTo(list[(i + 1).mod(list.size)].key)
+    }
+
+    suspend fun rename(key: String, nickname: String) {
+        saved.update { s -> SavedPcs(s.pcs.map { if (it.key == key) it.copy(nickname = nickname) else it }) }
+        if (store.get().key == key) store.update { it.copy(nickname = nickname) }
+    }
+
+    /** Forget one PC; if it was active, the next saved one takes over. */
+    suspend fun forget(key: String) {
+        saved.update { s -> SavedPcs(s.pcs.filterNot { it.key == key }) }
+        if (store.get().key == key) store.set(saved.get().pcs.firstOrNull() ?: PcLinkConfig())
+    }
+
+    /** Quick reachability check for any saved PC (for the switcher's online dots). */
+    suspend fun isOnline(cfg: PcLinkConfig): Boolean = runCatching {
+        Http.getText("${cfg.baseUrl}/api/status", auth(cfg), timeoutMs = 2_500)
+    }.isSuccess
+
+    /** Wake a specific PC (or the active one). */
+    suspend fun wake(cfg: PcLinkConfig? = null): Int {
+        val c = cfg ?: store.get()
+        if (c.macs.isEmpty()) return -1
+        val subnet = Regex("^(\\d+\\.\\d+\\.\\d+)\\.\\d+$").find(c.host)?.groupValues?.get(1)?.let { "$it.255" }
+        return runCatching { WakeOnLan.wake(c.macs, listOfNotNull(subnet)) }.getOrDefault(0)
+    }
 
     private suspend fun config(): PcLinkConfig = store.get()
 
@@ -122,7 +193,7 @@ class PcLinkClient(private val store: JsonStore<PcLinkConfig>) {
         val body = Http.json.encodeToString(PairRequest.serializer(), PairRequest(code.trim(), deviceName))
         val res = Http.json.decodeFromString(PairResponse.serializer(), Http.postJson("$base/api/pair", body, timeoutMs = 6_000))
         val config = PcLinkConfig(host = host.trim(), port = port, token = res.token, name = res.name, macs = res.macs, pcId = res.pcId ?: "")
-        store.set(config)
+        setActive(config)
         return config
     }
 
@@ -148,7 +219,7 @@ class PcLinkClient(private val store: JsonStore<PcLinkConfig>) {
                         host = pc.host, port = pc.port, token = st.token ?: error("No token"),
                         name = st.name ?: pc.name, macs = st.macs, pcId = st.pcId ?: pc.pcId,
                     )
-                    store.set(config)
+                    setActive(config)
                     return config
                 }
                 "denied" -> error("The PC said no")
@@ -158,7 +229,8 @@ class PcLinkClient(private val store: JsonStore<PcLinkConfig>) {
         error("Timed out waiting for the PC")
     }
 
-    suspend fun unpair() = store.set(PcLinkConfig())
+    /** Forget the active PC (the next saved one, if any, becomes active). */
+    suspend fun unpair() = forget(store.get().key)
 
     suspend fun status(): PcStatus {
         val c = config()
@@ -168,7 +240,10 @@ class PcLinkClient(private val store: JsonStore<PcLinkConfig>) {
             fetchStatus(config())
         }
         // Keep wake-on-LAN targets fresh (a new network adapter, say).
-        if (status.macs.isNotEmpty() && status.macs != c.macs) store.update { it.copy(macs = status.macs, name = status.name) }
+        if (status.macs.isNotEmpty() && status.macs != c.macs) {
+            store.update { it.copy(macs = status.macs, name = status.name) }
+            remember(store.get())
+        }
         return status
     }
 
@@ -183,6 +258,7 @@ class PcLinkClient(private val store: JsonStore<PcLinkConfig>) {
         val found = PcDiscovery.discover(1_800).firstOrNull { it.pcId == c.pcId } ?: return null
         if (found.host == c.host && found.port == c.port) return null
         store.update { it.copy(host = found.host, port = found.port) }
+        remember(store.get())
         return config()
     }
 

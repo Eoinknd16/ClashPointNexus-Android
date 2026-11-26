@@ -141,7 +141,7 @@ class DetailViewModel(private val c: AppContainer, val type: CatalogType, val id
      * that source; without, the PC picks its own top stream (its own addon list). */
     fun sendToTv(episode: Episode?, stream: StreamOption? = null) {
         val meta = _state.value.meta ?: return
-        flash("Sending to ${c.pcStore.value.name.ifBlank { "PC" }}…", busy = true)
+        flash("Sending to ${c.pcStore.value.displayName}…", busy = true)
         viewModelScope.launch {
             val request = CastRequest(
                 type = type,

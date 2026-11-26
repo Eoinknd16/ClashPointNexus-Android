@@ -358,6 +358,15 @@ private fun TileEditor(blockId: String?, existing: TileConfig?, onDismiss: () ->
             TileAction.Kind.PcNav -> TargetChips("Button", PC_NAV_TARGETS, t.action.arg) { key, label -> t = t.copy(action = t.action.copy(arg = key), label = relabel(t, label)) }
             TileAction.Kind.PcScreen -> TargetChips("PC screen", PC_SCREEN_TARGETS, t.action.arg) { key, label -> t = t.copy(action = t.action.copy(arg = key), label = relabel(t, label)) }
             TileAction.Kind.Settings -> TargetChips("Setting", SETTINGS_TARGETS, t.action.arg) { key, label -> t = t.copy(action = t.action.copy(arg = key), label = relabel(t, label)) }
+            TileAction.Kind.WakePc, TileAction.Kind.SwitchPc -> {
+                val active by c.pcStore.state.collectAsStateWithLifecycle()
+                val saved by c.pcSaved.state.collectAsStateWithLifecycle()
+                val pcs = com.eoinknd16.nexus.link.allPcs(active, saved)
+                if (pcs.size > 1) {
+                    val first = if (t.action.kind == TileAction.Kind.WakePc) "" to "Whichever PC is active" else "next" to "Next PC (cycles)"
+                    TargetChips("Which PC", listOf(first) + pcs.map { it.key to it.displayName }, t.action.arg) { key, _ -> t = t.copy(action = t.action.copy(arg = key)) }
+                }
+            }
             TileAction.Kind.Page -> {
                 val targets = listOf("next" to "Next page", "prev" to "Previous page", "main" to "Main page") +
                     LookState.look.home.pages.map { it.id to it.name }
@@ -500,6 +509,7 @@ private fun TileEditor(blockId: String?, existing: TileConfig?, onDismiss: () ->
 
 private fun defaultIcon(kind: TileAction.Kind, current: String): String = when (kind) {
     TileAction.Kind.WakePc -> "power"
+    TileAction.Kind.SwitchPc -> "computer"
     TileAction.Kind.PcNav -> "remote"
     TileAction.Kind.PcScreen -> "computer"
     TileAction.Kind.Url -> "web"

@@ -1,5 +1,11 @@
 package com.eoinknd16.nexus.ui.pc
 
+import androidx.compose.foundation.layout.width
+
+import com.eoinknd16.nexus.ui.fx.holoPanel
+
+import androidx.compose.foundation.horizontalScroll
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -75,6 +81,16 @@ data class PcScreenState(val status: PcStatus? = null, val error: String? = null
 
 class PcViewModel(private val c: AppContainer) : ViewModel() {
     val config = c.pcStore.state
+    val saved = c.pcSaved.state
+    /** Online/offline for every saved PC, for the switcher. */
+    private val _online = MutableStateFlow<Map<String, Boolean>>(emptyMap())
+    val online: StateFlow<Map<String, Boolean>> = _online
+
+    fun switchTo(key: String) = viewModelScope.launch {
+        c.pc.switchTo(key)?.let { toast("Now controlling ${it.displayName}") }
+        _state.update { PcScreenState(toast = it.toast) }
+        start()
+    }
     private val _state = MutableStateFlow(PcScreenState())
     val state: StateFlow<PcScreenState> = _state
     private var poll: Job? = null
@@ -83,11 +99,17 @@ class PcViewModel(private val c: AppContainer) : ViewModel() {
         poll?.cancel()
         poll = viewModelScope.launch {
             while (isActive) {
-                if (c.pcStore.get().isPaired) {
+                val active = c.pcStore.get()
+                if (active.isPaired) {
                     runCatching { c.pc.status() }.fold(
                         onSuccess = { s -> _state.update { it.copy(status = s, error = null) } },
                         onFailure = { e -> _state.update { it.copy(status = null, error = e.describe()) } },
                     )
+                    _online.update { it + (active.key to (_state.value.status != null)) }
+                    // Check the other PCs too, so the switcher shows which are on.
+                    c.pc.all().filter { it.key != active.key }.forEach { p ->
+                        launch { val on = c.pc.isOnline(p); _online.update { it + (p.key to on) } }
+                    }
                 }
                 delay(4_000)
             }
@@ -108,11 +130,11 @@ class PcViewModel(private val c: AppContainer) : ViewModel() {
     }
 
     fun wake() = viewModelScope.launch {
-        val cfg = c.pcStore.get()
-        if (cfg.macs.isEmpty()) return@launch toast("No MAC address on file. Re-pair while the PC is on.")
-        val subnet = Regex("^(\\d+\\.\\d+\\.\\d+)\\.\\d+$").find(cfg.host)?.groupValues?.get(1)?.let { "$it.255" }
-        val sent = runCatching { WakeOnLan.wake(cfg.macs, listOfNotNull(subnet)) }.getOrDefault(0)
-        toast(if (sent > 0) "Wake packet sent" else "Couldn't send wake packet")
+        when (c.pc.wake()) {
+            -1 -> toast("No MAC address on file. Re-pair while the PC is on.")
+            0 -> toast("Couldn't send wake packet")
+            else -> toast("Wake packet sent")
+        }
     }
 
     private fun toast(text: String) {
@@ -129,7 +151,10 @@ fun PcScreen() {
     val vm = nexusViewModel { PcViewModel(it) }
     val nav = LocalNav.current
     val config by vm.config.collectAsStateWithLifecycle()
+    val saved by vm.saved.collectAsStateWithLifecycle()
+    val online by vm.online.collectAsStateWithLifecycle()
     val state by vm.state.collectAsStateWithLifecycle()
+    val pcs = com.eoinknd16.nexus.link.allPcs(config, saved)
 
     LifecycleResumeEffect(Unit) {
         vm.start()
@@ -139,7 +164,7 @@ fun PcScreen() {
     NexusBackdrop(intensity = 0.6f) {
         Column(Modifier.fillMaxSize().navigationBarsPadding()) {
             ScreenHeader(
-                config.name.ifBlank { "Living room PC" },
+                if (config.isPaired) config.displayName else "Living room PC",
                 when {
                     !config.isPaired -> "not linked"
                     state.status != null -> "online · nexus ${state.status?.version}"
@@ -154,6 +179,30 @@ fun PcScreen() {
                 return@Column
             }
 
+            if (pcs.size > 1) {
+                // One tap to switch which PC the remote controls.
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    pcs.forEach { p ->
+                        val active = p.key == config.key
+                        Row(
+                            Modifier.nexusPress({ if (!active) vm.switchTo(p.key) })
+                                .holoPanel(if (active) Nx.Lime else Nx.CyanDim, if (active) 0.2f else 0f)
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Box(
+                                Modifier.size(8.dp).clip(androidx.compose.foundation.shape.CircleShape)
+                                    .background(when (online[p.key]) { true -> Nx.Lime; false -> Nx.Danger; null -> Nx.Muted }),
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(p.displayName, style = MaterialTheme.typography.labelLarge, color = if (active) Nx.Text else Nx.Muted, maxLines = 1)
+                        }
+                    }
+                }
+            }
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
                 state.status?.nowPlaying?.let { np ->
                     HoloPanel(Modifier.fillMaxWidth(), accent = Nx.Magenta) {

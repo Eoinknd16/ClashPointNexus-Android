@@ -468,6 +468,7 @@ private val GESTURE_ACTIONS: List<Pair<TileAction, String>> = buildList {
     add(TileAction(TileAction.Kind.LockScreen) to "Lock screen")
     add(TileAction(TileAction.Kind.Recents) to "Recent apps")
     add(TileAction(TileAction.Kind.WakePc) to "Wake PC")
+    add(TileAction(TileAction.Kind.SwitchPc, "next") to "Switch to next PC")
     add(TileAction(TileAction.Kind.WebSearch) to "Web search")
     com.eoinknd16.nexus.ui.home.PC_SCREEN_TARGETS.forEach { (k, l) -> add(TileAction(TileAction.Kind.PcScreen, k) to "PC: $l") }
 }
