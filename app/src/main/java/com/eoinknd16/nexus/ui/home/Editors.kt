@@ -407,7 +407,20 @@ private fun TileEditor(blockId: String?, existing: TileConfig?, onDismiss: () ->
                 if (t.folderStyle == FolderStyle.Grid) {
                     SliderRow("Columns", t.folderColumns.toFloat(), 2f..6f, { it.roundToInt().toString() }, steps = 3) { t = t.copy(folderColumns = it.roundToInt()) }
                 }
-                ToggleRow("Show app previews on the tile", t.folderPreview) { t = t.copy(folderPreview = it) }
+                HudLabel("On the tile")
+                ChoiceRow("Tile style", com.eoinknd16.nexus.look.FolderTileStyle.entries, t.folderTileStyle, { it.label }) { t = t.copy(folderTileStyle = it) }
+                if (t.folderTileStyle == com.eoinknd16.nexus.look.FolderTileStyle.Icon) {
+                    ToggleRow("Show app previews on the tile", t.folderPreview) { t = t.copy(folderPreview = it) }
+                } else {
+                    SliderRow("Icon size on the tile", t.folderTileIconScale, 0.5f..1.5f, { "${(it * 100).roundToInt()}%" }) { t = t.copy(folderTileIconScale = it) }
+                    ToggleRow("Folder name on the tile", t.folderTileLabel) { t = t.copy(folderTileLabel = it) }
+                }
+                if (t.folderTileStyle == com.eoinknd16.nexus.look.FolderTileStyle.Physics) {
+                    SliderRow("Bounciness", t.folderPhysicsBounce, 0f..1f, { "${(it * 100).roundToInt()}%" }) { t = t.copy(folderPhysicsBounce = it) }
+                    ToggleRow("Tilt the phone to move them", t.folderPhysicsTilt) { t = t.copy(folderPhysicsTilt = it) }
+                    SliderRow("React to the screen moving", t.folderPhysicsInertia, 0f..3f, { if (it < 0.05f) "Off" else "${(it * 100).roundToInt()}%" }) { t = t.copy(folderPhysicsInertia = it) }
+                }
+                HudLabel("When opened")
                 HudLabel("When open")
                 ChoiceRow("Background", com.eoinknd16.nexus.look.FolderBackground.entries, t.folderBackground, { it.label }) { t = t.copy(folderBackground = it) }
                 SliderRow(
@@ -430,6 +443,8 @@ private fun TileEditor(blockId: String?, existing: TileConfig?, onDismiss: () ->
                         folderDim = src.folderDim, folderPosition = src.folderPosition, folderIconSize = src.folderIconSize,
                         folderShowLabels = src.folderShowLabels, folderShowTitle = src.folderShowTitle, folderAnimateClose = src.folderAnimateClose,
                         folderShowEditButton = src.folderShowEditButton,
+                        folderTileStyle = src.folderTileStyle, folderTileIconScale = src.folderTileIconScale, folderTileLabel = src.folderTileLabel,
+                        folderPhysicsBounce = src.folderPhysicsBounce, folderPhysicsTilt = src.folderPhysicsTilt, folderPhysicsInertia = src.folderPhysicsInertia,
                     )
                     c.editLook { l0 ->
                         val l = l0.mapAllBlocks { list -> list.map { b -> if (b is HomeBlock.Tiles) b.copy(tiles = b.tiles.map { it.styled() }) else b } }

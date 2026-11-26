@@ -444,6 +444,11 @@ data class TileAction(val kind: Kind, val arg: String = "") {
 enum class FolderAnimation(val label: String) { Bloom("Bloom from tile"), Rise("Rise up"), Fade("Fade"), Spin("Warp spin") }
 
 @Serializable
+enum class FolderTileStyle(val label: String) {
+    Icon("Small preview icon"), Fill("Icons fill the tile"), Physics("Loose icons with physics"),
+}
+
+@Serializable
 enum class FolderStyle(val label: String) { Grid("Grid"), Ring("Orbit ring") }
 
 /** What sits behind a folder's apps. None = the icons float on the blurred home screen. */
@@ -487,6 +492,18 @@ data class TileConfig(
     val folderAnimateClose: Boolean = true,
     /** Pencil button inside the open folder (long-pressing the tile edits it either way). */
     val folderShowEditButton: Boolean = false,
+    /** How a folder looks on its tile: a small preview icon, icons filling the tile, or loose icons with physics. */
+    val folderTileStyle: FolderTileStyle = FolderTileStyle.Fill,
+    /** Icon size on the tile in Fill / Physics, relative to the space available. */
+    val folderTileIconScale: Float = 1f,
+    /** Show the folder's name on the tile under the icons. */
+    val folderTileLabel: Boolean = true,
+    /** Physics: how bouncy the icons are (0 = thud, 1 = superball). */
+    val folderPhysicsBounce: Float = 0.45f,
+    /** Physics: tilting the phone moves the icons. */
+    val folderPhysicsTilt: Boolean = true,
+    /** Physics: how hard the icons get thrown when home scrolls / pages slide. */
+    val folderPhysicsInertia: Float = 1f,
     /** Locked = long-press won't open the editor (unlock from home edit mode). */
     val locked: Boolean = false,
     /** Per-tile border look; null fields fall back to Customise › Panels. */

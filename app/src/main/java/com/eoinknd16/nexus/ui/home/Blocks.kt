@@ -534,6 +534,13 @@ fun TileView(
             }
         }
         val pad = Modifier.matchParentSize().padding(style.padding.coerceIn(0.dp, 40.dp))
+        // Folders can fill the whole tile with their apps instead of a small preview.
+        if (tile.isFolder() && tile.folderTileStyle != com.eoinknd16.nexus.look.FolderTileStyle.Icon) {
+            val apps by appContainer().apps.apps.collectAsStateWithLifecycle()
+            val icons = remember(tile.folderApps, apps) { tile.folderApps.mapNotNull { k -> apps.firstOrNull { it.key == k }?.icon } }
+            FolderTileContent(tile, icons, showLabel = true, modifier = pad)
+            return@Box
+        }
         when (style.layout) {
             com.eoinknd16.nexus.look.TileLayout.Stack -> Column(pad) {
                 TileIcon(tile, runner, accent, style.iconSize)
@@ -563,6 +570,12 @@ fun TileIcon(tile: TileConfig, runner: TileRunner, accent: Color, size: androidx
     val apps by appContainer().apps.apps.collectAsStateWithLifecycle()
     val shape = nexusShape(0.45f)
     when {
+        tile.isFolder() && tile.folderTileStyle != com.eoinknd16.nexus.look.FolderTileStyle.Icon -> {
+            val icons = tile.folderApps.mapNotNull { k -> apps.firstOrNull { it.key == k }?.icon }
+            Box(Modifier.size(size).clip(shape).background(accent.copy(alpha = 0.18f)).padding(3.dp)) {
+                FolderTileContent(tile, icons, showLabel = false, modifier = Modifier.fillMaxSize())
+            }
+        }
         tile.isFolder() && tile.folderPreview -> {
             val icons = tile.folderApps.mapNotNull { k -> apps.firstOrNull { it.key == k }?.icon }.take(4)
             Box(Modifier.size(size).clip(shape).background(accent.copy(alpha = 0.18f)).padding(3.dp)) {
