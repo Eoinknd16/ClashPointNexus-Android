@@ -114,6 +114,7 @@ class TileRunner(
                     else -> toast("Waking ${cfg.displayName}")
                 }
             }
+            TileAction.Kind.PcHub -> PcHub.open = true
             TileAction.Kind.PcPower -> c.scope.launch {
                 val what = a.arg.ifBlank { "shutdown" }
                 runCatching { c.pc.power(what) }.fold(

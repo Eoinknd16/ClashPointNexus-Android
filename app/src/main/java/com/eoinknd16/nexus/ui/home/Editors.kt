@@ -517,6 +517,27 @@ private fun TileEditor(blockId: String?, existing: TileConfig?, onDismiss: () ->
         TextRow("Background image URL (optional)", t.image ?: "", "https://…/image.jpg", KeyboardType.Uri) { t = t.copy(image = it.ifBlank { null }) }
 
         Spacer(Modifier.height(16.dp))
+        // Several PC tiles in this block? Merge them into one "PC controls" tile.
+        val pcTiles = (LookState.look.allBlocks.firstOrNull { it.id == blockId } as? HomeBlock.Tiles)?.tiles?.filter { isPcTile(it) }.orEmpty()
+        if (existing != null && blockId != null && isPcTile(existing) && pcTiles.size > 1) {
+            NexusButton("Combine ${pcTiles.size} PC tiles into one", icon = Icons.Filled.Check, accent = Nx.Lime) {
+                c.editLook { l ->
+                    l.updateBlock(blockId) { b ->
+                        if (b !is HomeBlock.Tiles) b else b.copy(
+                            tiles = b.tiles.mapNotNull { x ->
+                                when {
+                                    x.id == existing.id -> x.copy(label = "PC", sublabel = "Remote · wake · power", icon = "remote", action = TileAction(TileAction.Kind.PcHub))
+                                    isPcTile(x) -> null
+                                    else -> x
+                                }
+                            },
+                        )
+                    }
+                }
+                onDismiss()
+            }
+            Spacer(Modifier.height(10.dp))
+        }
         if (existing != null) {
             NexusButton("Delete", icon = Icons.Filled.Delete, accent = Nx.Danger) {
                 c.editLook { it.removeTile(blockId, existing.id) }
@@ -530,6 +551,7 @@ private fun defaultIcon(kind: TileAction.Kind, current: String): String = when (
     TileAction.Kind.WakePc -> "power"
     TileAction.Kind.SwitchPc -> "computer"
     TileAction.Kind.PcPower -> "power"
+    TileAction.Kind.PcHub -> "remote"
     TileAction.Kind.PcNav -> "remote"
     TileAction.Kind.PcScreen -> "computer"
     TileAction.Kind.Url -> "web"

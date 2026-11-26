@@ -422,6 +422,7 @@ data class TileAction(val kind: Kind, val arg: String = "") {
     enum class Kind(val label: String) {
         Screen("Open Nexus screen"),
         LaunchApp("Launch app"),
+        PcHub("PC controls (all in one)"),
         WakePc("Wake PC"),
         SwitchPc("Switch PC"),
         PcPower("Shut down / restart / sleep PC"),
@@ -595,8 +596,7 @@ data class HomeLayout(
     companion object {
         fun defaultTiles(): List<TileConfig> = listOf(
             TileConfig(label = "TV", sublabel = "Movies & shows", icon = "movie", action = TileAction(TileAction.Kind.Screen, "tv")),
-            TileConfig(label = "Remote", sublabel = "Control the PC", icon = "remote", color = "accent2", action = TileAction(TileAction.Kind.Screen, "pc")),
-            TileConfig(label = "Wake PC", sublabel = "Magic packet", icon = "power", color = "warn", action = TileAction(TileAction.Kind.WakePc)),
+            TileConfig(label = "PC", sublabel = "Remote · wake · power", icon = "remote", color = "accent2", action = TileAction(TileAction.Kind.PcHub)),
             TileConfig(label = "Apps", sublabel = "Swipe up anywhere", icon = "apps", color = "good", action = TileAction(TileAction.Kind.Screen, "apps")),
             TileConfig(label = "Search", sublabel = "Find anything", icon = "search", action = TileAction(TileAction.Kind.Screen, "search")),
             TileConfig(label = "Customise", sublabel = "Make it yours", icon = "palette", color = "muted", action = TileAction(TileAction.Kind.Screen, "customize")),

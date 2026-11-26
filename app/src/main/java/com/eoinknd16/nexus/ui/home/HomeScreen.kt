@@ -59,6 +59,9 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -236,6 +239,11 @@ fun HomeScreen() {
         var trayPx by remember { mutableStateOf(0) }
         val density = androidx.compose.ui.platform.LocalDensity.current
         val trayDp = with(density) { trayPx.toDp() }
+        // Where the tray's icons start (in the page area's coordinates): blur begins only there.
+        var pageTopY by remember { mutableStateOf(0f) }
+        var pageH by remember { mutableStateOf(0) }
+        var dockIconsY by remember { mutableStateOf(Float.NaN) }
+        val blurFrom = if (dockIconsY.isNaN()) pageH - trayPx.toFloat() else dockIconsY - pageTopY
         Column(Modifier.fillMaxSize().statusBarsPadding()) {
             AnimatedVisibility(editMode, enter = slideInVertically() + fadeIn(), exit = slideOutVertically() + fadeOut()) {
                 EditBar(
@@ -247,10 +255,10 @@ fun HomeScreen() {
                     onCustomise = { nav.navigate(Routes.CUSTOMIZE) },
                 )
             }
-            Box(Modifier.weight(1f)) {
+            Box(Modifier.weight(1f).onGloballyPositioned { pageTopY = it.positionInRoot().y; pageH = it.size.height }) {
             androidx.compose.animation.AnimatedContent(
                 targetState = pager.current,
-                modifier = Modifier.fillMaxSize().trayBackdrop(trayPx.toFloat(), home.trayBlurDp, home.trayFade),
+                modifier = Modifier.fillMaxSize().trayBackdrop(if (trayPx > 0) blurFrom else 0f, home.trayBlurDp, home.trayFade),
                 transitionSpec = {
                     val d = pager.direction
                     val spec = com.eoinknd16.nexus.ui.fx.nexusSpring<androidx.compose.ui.unit.IntOffset>()
@@ -334,7 +342,11 @@ fun HomeScreen() {
             if (home.showPageDots && home.pages.isNotEmpty()) {
                 PageDots(listOf<String?>(null) + home.pages.map { it.id }, pager.current) { pager.go(it ?: "main") }
             }
-            if ((home.dock.visible && currentPage?.showDock != false) || editMode) {
+            val dockShown = (home.dock.visible && currentPage?.showDock != false) || editMode
+            if (!dockShown) dockIconsY = Float.NaN
+            if (dockShown) {
+                val iconInset = with(density) { (12.dp + if (home.dock.framed) 10.dp else 0.dp).toPx() }
+                Box(Modifier.onGloballyPositioned { dockIconsY = it.positionInRoot().y + iconInset }) {
                 Dock(
                     config = home.dock,
                     runner = runner,
@@ -345,6 +357,7 @@ fun HomeScreen() {
                     onDockSettings = { editing = HomeEdit.Dock },
                     onDrawer = { nav.navigate(Routes.APPS) },
                 )
+                }
             }
             }
             }
@@ -378,6 +391,7 @@ fun HomeScreen() {
     }
 
     editing?.let { e -> HomeEditorHost(e, onDismiss = { editing = null }, onEdit = { editing = it }) }
+    PcHubPanel(onOpenRemote = { nav.navigate(Routes.PC) })
 }
 
 /** Which Tiles block (or the dock, null) a tile lives in. */
@@ -527,45 +541,44 @@ fun SizedBlock(size: com.eoinknd16.nexus.look.BlockSize?, content: @Composable (
  * One recorded layer drawn twice, so it costs no extra composition.
  */
 @Composable
-private fun Modifier.trayBackdrop(trayPx: Float, blurDp: Float, fade: Boolean): Modifier {
-    if (trayPx <= 0f || (!fade && blurDp <= 0f)) return this
+private fun Modifier.trayBackdrop(fromPx: Float, blurDp: Float, fade: Boolean): Modifier {
+    if (fromPx <= 0f || (!fade && blurDp <= 0f)) return this
     val sharp = androidx.compose.ui.graphics.rememberGraphicsLayer()
     val blurred = androidx.compose.ui.graphics.rememberGraphicsLayer()
     val canBlur = blurDp > 0f && android.os.Build.VERSION.SDK_INT >= 31
     val density = androidx.compose.ui.platform.LocalDensity.current
     val blurPx = with(density) { blurDp.dp.toPx() }
-    val fadePx = with(density) { 48.dp.toPx() }
+    val edgePx = with(density) { 14.dp.toPx() }
     return this.drawWithContent {
         sharp.record { this@drawWithContent.drawContent() }
         val h = size.height
-        val top = (h - trayPx).coerceAtLeast(0f)
+        val top = fromPx.coerceIn(0f, h)
         fun stop(y: Float) = (y / h).coerceIn(0f, 1f)
         val black = androidx.compose.ui.graphics.Color.Black
         val clear = androidx.compose.ui.graphics.Color.Transparent
         val paint = androidx.compose.ui.graphics.Paint()
         val bounds = androidx.compose.ui.geometry.Rect(0f, 0f, size.width, h)
-        // Sharp page: fully visible above the tray, fading out as it slides under.
+        // Sharp page: untouched above the tray icons, fading out just below where they start.
         drawContext.canvas.saveLayer(bounds, paint)
         drawLayer(sharp)
-        if (fade || canBlur) {
-            drawRect(
-                androidx.compose.ui.graphics.Brush.verticalGradient(
-                    0f to black, stop(top - fadePx) to black, stop(top + fadePx * 0.5f) to clear, 1f to clear,
-                ),
-                blendMode = androidx.compose.ui.graphics.BlendMode.DstIn,
-            )
-        }
+        drawRect(
+            androidx.compose.ui.graphics.Brush.verticalGradient(
+                0f to black, stop(top) to black, stop(top + edgePx) to clear, 1f to clear,
+            ),
+            blendMode = androidx.compose.ui.graphics.BlendMode.DstIn,
+        )
         drawContext.canvas.restore()
         if (canBlur) {
-            // Blurred copy behind the tray, fading off the bottom of the screen.
+            // Only what's actually behind the icons gets blurred (clipped first,
+            // so tiles above don't smear their blur down into the tray).
             blurred.renderEffect = androidx.compose.ui.graphics.BlurEffect(blurPx, blurPx, androidx.compose.ui.graphics.TileMode.Decal)
-            blurred.record { drawLayer(sharp) }
+            blurred.record { clipRect(top = top) { drawLayer(sharp) } }
             drawContext.canvas.saveLayer(bounds, paint)
             drawLayer(blurred)
             drawRect(
                 androidx.compose.ui.graphics.Brush.verticalGradient(
-                    0f to clear, stop(top - fadePx) to clear, stop(top) to black,
-                    stop(top + (h - top) * 0.45f) to black, 1f to if (fade) clear else black,
+                    0f to clear, stop(top) to clear, stop(top + edgePx) to black,
+                    stop(top + (h - top) * 0.6f) to black, 1f to if (fade) clear else black,
                 ),
                 blendMode = androidx.compose.ui.graphics.BlendMode.DstIn,
             )
