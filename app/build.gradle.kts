@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -21,7 +23,7 @@ android {
     // installs an update over an app signed with the same key, so this is what
     // makes in-app updates work and keeps your settings across versions.
     // Debug builds use it too, so any build can update any other.
-    val signingProps = java.util.Properties().apply {
+    val signingProps = Properties().apply {
         val f = rootProject.file("signing/signing.properties")
         if (f.exists()) f.inputStream().use { load(it) }
     }
