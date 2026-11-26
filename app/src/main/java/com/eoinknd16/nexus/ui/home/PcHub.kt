@@ -1,5 +1,9 @@
 package com.eoinknd16.nexus.ui.home
 
+import androidx.compose.foundation.layout.heightIn
+
+import androidx.compose.foundation.verticalScroll
+
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
@@ -115,10 +119,12 @@ fun PcHubPanel(onOpenRemote: () -> Unit) {
         )
     }
 
+    val bars = rememberSystemBarPadding()
     Dialog(onDismissRequest = ::close, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
-        Box(Modifier.fillMaxSize().nexusPress(::close), contentAlignment = Alignment.BottomCenter) {
+        Box(Modifier.fillMaxSize().nexusPress(::close).padding(top = bars.top, bottom = bars.bottom), contentAlignment = Alignment.BottomCenter) {
             Column(
-                Modifier.fillMaxWidth().navigationBarsPadding().padding(12.dp)
+                Modifier.fillMaxWidth().padding(12.dp)
+                    .scrollIfTall()
                     .nexusPress({}) // taps inside don't close it
                     .holoPanel(Nx.Cyan, 0.25f).background(Nx.PanelSolid.copy(alpha = 0.9f), nexusShape(0.6f)).padding(16.dp),
             ) {
@@ -241,3 +247,8 @@ fun isPcTile(t: com.eoinknd16.nexus.look.TileConfig): Boolean {
         (k == com.eoinknd16.nexus.look.TileAction.Kind.Screen && t.action.arg == "pc")
 }
 
+
+
+/** Lets the panel scroll on short screens instead of running under the bars. */
+@Composable
+private fun Modifier.scrollIfTall(): Modifier = this.then(Modifier.heightIn(max = 4000.dp).verticalScroll(rememberScrollState()))

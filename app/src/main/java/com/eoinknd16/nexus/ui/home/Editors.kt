@@ -125,6 +125,9 @@ fun EditorSheet(
 ) {
     val c = appContainer()
     val canUndo by c.canUndo.collectAsStateWithLifecycle()
+    // Measured from the main window: dialog windows don't always get told about
+    // the status bar or the on-screen Home / Back / Recents buttons.
+    val bars = rememberSystemBarPadding()
     androidx.compose.ui.window.Dialog(
         onDismissRequest = onDismiss,
         properties = androidx.compose.ui.window.DialogProperties(
@@ -134,7 +137,7 @@ fun EditorSheet(
         ),
     ) {
         Column(
-            Modifier.fillMaxSize().background(Nx.PanelSolid).statusBarsPadding().navigationBarsPadding().imePadding(),
+            Modifier.fillMaxSize().background(Nx.PanelSolid).padding(top = bars.top, bottom = bars.bottom).imePadding(),
         ) {
             Row(
                 Modifier.fillMaxWidth().background(Nx.Deep).padding(horizontal = 16.dp, vertical = 10.dp),
@@ -882,4 +885,21 @@ private fun actionGroup(k: TileAction.Kind): String = when (k) {
     TileAction.Kind.LockScreen, TileAction.Kind.Recents -> "Phone"
     TileAction.Kind.Url, TileAction.Kind.WebSearch -> "Web"
     else -> "Other"
+}
+
+
+data class SystemBarPadding(val top: androidx.compose.ui.unit.Dp, val bottom: androidx.compose.ui.unit.Dp)
+
+/** Status bar and navigation bar (gesture pill or 3 buttons) heights, from the main window. */
+@Composable
+fun rememberSystemBarPadding(): SystemBarPadding {
+    val d = androidx.compose.ui.platform.LocalDensity.current
+    val top = androidx.compose.foundation.layout.WindowInsets.statusBars.getTop(d)
+    val bottom = androidx.compose.foundation.layout.WindowInsets.navigationBars.getBottom(d)
+    val view = androidx.compose.ui.platform.LocalView.current
+    // Fallback if Compose hasn't seen insets yet: ask the window directly.
+    val raw = androidx.core.view.ViewCompat.getRootWindowInsets(view)
+    val sysTop = raw?.getInsets(androidx.core.view.WindowInsetsCompat.Type.statusBars())?.top ?: 0
+    val sysBottom = raw?.getInsets(androidx.core.view.WindowInsetsCompat.Type.navigationBars())?.bottom ?: 0
+    return with(d) { SystemBarPadding(maxOf(top, sysTop).toDp(), maxOf(bottom, sysBottom).toDp()) }
 }

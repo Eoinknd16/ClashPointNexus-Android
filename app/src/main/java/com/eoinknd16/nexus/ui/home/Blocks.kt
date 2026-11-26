@@ -1,5 +1,7 @@
 package com.eoinknd16.nexus.ui.home
 
+import com.eoinknd16.nexus.look.updateBlock
+
 import androidx.compose.animation.core.VectorConverter
 
 import kotlin.math.roundToInt
