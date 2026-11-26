@@ -1,5 +1,29 @@
 package com.eoinknd16.nexus.ui.home
 
+import androidx.compose.animation.core.VectorConverter
+
+import kotlin.math.roundToInt
+
+import androidx.compose.ui.input.pointer.pointerInput
+
+import androidx.compose.runtime.key
+
+import androidx.compose.runtime.rememberCoroutineScope
+
+import androidx.compose.foundation.layout.offset
+
+import androidx.compose.ui.layout.positionInRoot
+
+import androidx.compose.ui.layout.positionInParent
+
+import androidx.compose.ui.layout.onPlaced
+
+import androidx.compose.ui.composed
+
+import androidx.compose.ui.zIndex
+
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+
 import androidx.compose.material.icons.filled.Delete
 
 import androidx.compose.material.icons.filled.Edit
@@ -382,19 +406,149 @@ private fun TilesGrid(
     onEditTile: (TileConfig) -> Unit,
     onAddTile: () -> Unit,
 ) {
+    val c = appContainer()
+    val haptics = com.eoinknd16.nexus.ui.fx.rememberHaptics()
     val cols = b.columns.coerceIn(1, 6)
-    val cells: List<TileConfig?> = b.tiles + if (editMode || b.tiles.isEmpty()) listOf(null) else emptyList()
-    val spans = cells.map { t -> (t?.colSpan ?: 1).coerceIn(1, cols) to (t?.rowSpan ?: 1).coerceIn(1, 4) }
     val gap = b.gapDp.coerceIn(0f, 40f).dp
     val style = TileStyle(b.iconSizeDp.dp, b.labelScale, b.paddingDp.dp, b.tileLayout)
+
+    // ---- Drag & drop (edit mode): pick up, others reflow live, drop onto an app to make a folder.
+    var dragId by remember { mutableStateOf<String?>(null) }
+    var order by remember(b.tiles) { mutableStateOf(b.tiles.map { it.id }) }
+    var finger by remember { mutableStateOf(Offset.Zero) } // in grid coordinates
+    var grab by remember { mutableStateOf(Offset.Zero) } // finger offset inside the tile
+    var mergeTarget by remember { mutableStateOf<String?>(null) }
+    var gridOrigin by remember { mutableStateOf(Offset.Zero) }
+    val slots = remember { mutableMapOf<String, androidx.compose.ui.geometry.Rect>() } // last laid-out rects
+
+    val byId = b.tiles.associateBy { it.id }
+    val shown: List<TileConfig> = if (dragId != null) order.mapNotNull { byId[it] } else b.tiles
+    val cells: List<TileConfig?> = shown + if (editMode || b.tiles.isEmpty()) listOf(null) else emptyList()
+    val spans = cells.map { t -> (t?.colSpan ?: 1).coerceIn(1, cols) to (t?.rowSpan ?: 1).coerceIn(1, 4) }
+
+    fun commit() {
+        val id = dragId ?: return
+        val target = mergeTarget
+        val dragged = byId[id]
+        val onto = target?.let { byId[it] }
+        if (dragged != null && onto != null && dragged.action.kind == com.eoinknd16.nexus.look.TileAction.Kind.LaunchApp) {
+            // Dropped onto another app (or a folder): make / grow a folder.
+            c.editLook(if (onto.isFolder()) "Added to “${onto.label}”" else "Folder created") { l ->
+                l.updateBlock(b.id) { blk ->
+                    if (blk !is HomeBlock.Tiles) blk else blk.copy(
+                        tiles = blk.tiles.mapNotNull { t ->
+                            when (t.id) {
+                                id -> null
+                                onto.id -> if (onto.isFolder()) t.copy(folderApps = (t.folderApps + dragged.action.arg).distinct())
+                                else t.copy(
+                                    label = "Folder", sublabel = "", icon = "apps", useAppIcon = false,
+                                    action = com.eoinknd16.nexus.look.TileAction(com.eoinknd16.nexus.look.TileAction.Kind.Folder),
+                                    folderApps = listOf(t.action.arg, dragged.action.arg).distinct(),
+                                )
+                                else -> t
+                            }
+                        },
+                    )
+                }
+            }
+            haptics.thud()
+        } else if (order != b.tiles.map { it.id }) {
+            c.editLook { l -> l.updateBlock(b.id) { blk -> if (blk is HomeBlock.Tiles) blk.copy(tiles = order.mapNotNull { byId[it] }) else blk } }
+            haptics.thud()
+        }
+        dragId = null
+        mergeTarget = null
+    }
+
+    fun hover() {
+        val id = dragId ?: return
+        val f = finger
+        // Over the middle of another app tile -> merge; otherwise take the slot under the finger.
+        val over = slots.entries.firstOrNull { (k, r) -> k != id && r.contains(f) }
+        val dragged = byId[id]
+        val canMerge = dragged?.action?.kind == com.eoinknd16.nexus.look.TileAction.Kind.LaunchApp
+        if (over != null) {
+            val r = over.value
+            val inner = androidx.compose.ui.geometry.Rect(r.left + r.width * 0.28f, r.top + r.height * 0.28f, r.right - r.width * 0.28f, r.bottom - r.height * 0.28f)
+            val t = byId[over.key]
+            val mergeable = canMerge && t != null && (t.isFolder() || t.action.kind == com.eoinknd16.nexus.look.TileAction.Kind.LaunchApp)
+            if (mergeable && inner.contains(f)) {
+                if (mergeTarget != over.key) { mergeTarget = over.key; haptics.rise() }
+                return
+            }
+            if (mergeTarget != null) mergeTarget = null
+            val from = order.indexOf(id)
+            val to = order.indexOf(over.key)
+            if (from >= 0 && to >= 0 && from != to) {
+                order = order.toMutableList().apply { removeAt(from); add(to, id) }
+                haptics.tick()
+            }
+        } else if (mergeTarget != null) mergeTarget = null
+    }
+
     androidx.compose.ui.layout.Layout(
+        modifier = Modifier.onGloballyPositioned { gridOrigin = it.positionInRoot() },
         content = {
             cells.forEachIndexed { i, tile ->
-                if (tile == null) AddCell(Modifier, onAddTile)
-                else TileView(
-                    tile = tile, runner = runner, showSublabel = b.showSublabels, index = i, modifier = Modifier,
-                    onOpenFolder = onOpenFolder, onLongPress = { onEditTile(tile) }, style = style, editMode = editMode,
-                )
+                if (tile == null) {
+                    key("add") { AddCell(Modifier, onAddTile) }
+                } else key(tile.id) {
+                    val dragging = dragId == tile.id
+                    val merging = mergeTarget == tile.id
+                    val lift by androidx.compose.animation.core.animateFloatAsState(if (dragging) 1f else 0f, com.eoinknd16.nexus.ui.fx.nexusSpring(), label = "lift")
+                    val mergeGlow by androidx.compose.animation.core.animateFloatAsState(if (merging) 1f else 0f, label = "merge")
+                    TileView(
+                        tile = tile, runner = runner, showSublabel = b.showSublabels, index = i,
+                        modifier = Modifier
+                            .onGloballyPositioned { co -> slots[tile.id] = co.boundsInRoot().translate(-gridOrigin) }
+                            .then(if (dragging) Modifier else Modifier.animatePlacement())
+                            .zIndex(if (dragging) 2f else 0f)
+                            .graphicsLayer {
+                                if (dragging) {
+                                    val slot = slots[tile.id]
+                                    if (slot != null) {
+                                        translationX = finger.x - grab.x - slot.left
+                                        translationY = finger.y - grab.y - slot.top
+                                    }
+                                }
+                                val sc = 1f + 0.06f * lift - 0.08f * mergeGlow
+                                scaleX = sc
+                                scaleY = sc
+                                alpha = 1f - 0.12f * lift
+                                shadowElevation = 24f * lift
+                            }
+                            .then(
+                                if (editMode) Modifier.pointerInput(tile.id) {
+                                    var moved = 0f
+                                    detectDragGesturesAfterLongPress(
+                                        onDragStart = { at ->
+                                            val slot = slots[tile.id] ?: return@detectDragGesturesAfterLongPress
+                                            order = b.tiles.map { it.id }
+                                            grab = at
+                                            finger = slot.topLeft + at
+                                            moved = 0f
+                                            dragId = tile.id
+                                            haptics.pickUp()
+                                        },
+                                        onDrag = { ch, d ->
+                                            ch.consume()
+                                            moved += d.getDistance()
+                                            finger += d
+                                            hover()
+                                        },
+                                        onDragEnd = {
+                                            // Held without moving = open its editor, like before.
+                                            if (moved < 12f) { dragId = null; onEditTile(tile) } else commit()
+                                        },
+                                        onDragCancel = { dragId = null; mergeTarget = null },
+                                    )
+                                } else Modifier,
+                            ),
+                        onOpenFolder = onOpenFolder,
+                        onLongPress = { if (!editMode) onEditTile(tile) },
+                        style = style, editMode = editMode,
+                    )
+                }
             }
         },
     ) { measurables, constraints ->
@@ -437,6 +591,26 @@ private fun TilesGrid(
             }
         }
     }
+}
+
+/**
+ * Slides an item to its new spot when the layout moves it (reflow while
+ * dragging, tiles added/removed), instead of jumping.
+ */
+fun Modifier.animatePlacement(): Modifier = composed {
+    val scope = rememberCoroutineScope()
+    var target by remember { mutableStateOf<androidx.compose.ui.unit.IntOffset?>(null) }
+    val anim = remember { mutableStateOf<androidx.compose.animation.core.Animatable<androidx.compose.ui.unit.IntOffset, androidx.compose.animation.core.AnimationVector2D>?>(null) }
+    this
+        .onPlaced { target = it.positionInParent().let { p -> androidx.compose.ui.unit.IntOffset(p.x.roundToInt(), p.y.roundToInt()) } }
+        .offset {
+            val t = target ?: return@offset androidx.compose.ui.unit.IntOffset.Zero
+            val a = anim.value ?: androidx.compose.animation.core.Animatable(t, androidx.compose.ui.unit.IntOffset.VectorConverter).also { anim.value = it }
+            if (a.targetValue != t) {
+                scope.launch { a.animateTo(t, com.eoinknd16.nexus.ui.fx.nexusSpring()) }
+            }
+            a.value - t
+        }
 }
 
 /** How a Tiles block draws its tiles (from the block's settings). */
