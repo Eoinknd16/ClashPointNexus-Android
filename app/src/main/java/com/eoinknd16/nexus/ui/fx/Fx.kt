@@ -1,5 +1,7 @@
 package com.eoinknd16.nexus.ui.fx
 
+import androidx.compose.ui.graphics.graphicsLayer
+
 import android.graphics.RuntimeShader
 import android.os.Build
 import androidx.annotation.RequiresApi
@@ -160,8 +162,20 @@ half4 main(float2 fragCoord) {
 @Composable
 fun NexusBackdrop(modifier: Modifier = Modifier, intensity: Float = 1f, content: @Composable BoxScope.() -> Unit) {
     val b = LookState.look.backdrop
+    val m = LookState.look.motion
     Box(modifier.fillMaxSize().background(Nx.Void)) {
-        if (b.style != BackdropStyle.Plain || b.scanlines) {
+        if (b.style != BackdropStyle.Plain || b.scanlines) Box(
+            // Deepest layer: drifts with the phone's tilt (see Tilt).
+            Modifier.fillMaxSize().then(
+                if (m.parallax) Modifier.graphicsLayer {
+                    val px = 14.dp.toPx() * m.parallaxStrength.coerceIn(0f, 3f)
+                    scaleX = 1f + 0.06f * m.parallaxStrength.coerceIn(0f, 3f)
+                    scaleY = scaleX
+                    translationX = Tilt.x * px
+                    translationY = Tilt.y * px
+                } else Modifier,
+            ),
+        ) {
             val shader = remember {
                 // A driver that rejects the shader shouldn't take the launcher down with it.
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) runCatching { RuntimeShader(BACKDROP_AGSL) }.getOrNull() else null
@@ -173,6 +187,54 @@ fun NexusBackdrop(modifier: Modifier = Modifier, intensity: Float = 1f, content:
             }
         }
         content()
+    }
+}
+
+/**
+ * How far the phone is tilted from how you're holding it, -1..1 each way
+ * (x right, y down). The resting angle adapts slowly, so whatever angle you
+ * hold it at is "level"; only movement shows. Updated by [TiltSensor]; read
+ * in draw/layer blocks only, so it never causes recomposition.
+ */
+object Tilt {
+    var x by mutableFloatStateOf(0f)
+    var y by mutableFloatStateOf(0f)
+}
+
+/** Feeds [Tilt] from the gravity sensor while the calling screen is resumed. */
+@Composable
+fun TiltSensor() {
+    val m = LookState.look.motion
+    if (!m.parallax && !m.sheen) return
+    val context = androidx.compose.ui.platform.LocalContext.current
+    androidx.lifecycle.compose.LifecycleResumeEffect(Unit) {
+        val sm = context.getSystemService(android.hardware.SensorManager::class.java)
+        val sensor = sm?.getDefaultSensor(android.hardware.Sensor.TYPE_GRAVITY) ?: sm?.getDefaultSensor(android.hardware.Sensor.TYPE_ACCELEROMETER)
+        var bx = Float.NaN
+        var by = 0f
+        var sx = 0f
+        var sy = 0f
+        val listener = object : android.hardware.SensorEventListener {
+            override fun onSensorChanged(e: android.hardware.SensorEvent) {
+                val gx = -e.values[0] / 9.81f
+                val gy = e.values[1] / 9.81f
+                if (bx.isNaN()) { bx = gx; by = gy }
+                // Slow baseline = how you're holding it; fast smoothing = the movement.
+                bx += (gx - bx) * 0.012f
+                by += (gy - by) * 0.012f
+                sx += ((gx - bx) - sx) * 0.18f
+                sy += ((gy - by) - sy) * 0.18f
+                Tilt.x = (sx * 3.2f).coerceIn(-1f, 1f)
+                Tilt.y = (-sy * 3.2f).coerceIn(-1f, 1f)
+            }
+            override fun onAccuracyChanged(s: android.hardware.Sensor?, a: Int) {}
+        }
+        if (sensor != null) sm.registerListener(listener, sensor, android.hardware.SensorManager.SENSOR_DELAY_GAME)
+        onPauseOrDispose {
+            sm?.unregisterListener(listener)
+            Tilt.x = 0f
+            Tilt.y = 0f
+        }
     }
 }
 
@@ -332,6 +394,7 @@ fun Modifier.holoPanel(accent: Color = Nx.Cyan, glow: Float = 0.35f, override: B
     val glowAmount = ((override?.glow ?: s.glow) * (glow / 0.35f)).coerceIn(0f, 1.5f)
     val glowRadius = s.glowRadius + if (style == BorderStyle.Glow) 6f else 0f
     val neonPeriod = s.neonSpeed.coerceIn(0.5f, 30f)
+    val sheen = LookState.look.motion.sheen
 
     return this
         .drawBehind {
@@ -346,6 +409,26 @@ fun Modifier.holoPanel(accent: Color = Nx.Cyan, glow: Float = 0.35f, override: B
         .background(Brush.verticalGradient(listOf(Nx.Panel, Nx.Panel.copy(alpha = (Nx.Panel.alpha + 0.1f).coerceAtMost(1f)))))
         .drawWithContent {
             drawContent()
+            if (sheen) {
+                // Light from the direction the phone is tipped: a soft glint
+                // across the glass, and a brighter catch on the facing rim.
+                val lx = size.width * (0.5f - Tilt.x * 0.7f)
+                val ly = size.height * (0.15f - Tilt.y * 0.7f)
+                drawRect(
+                    Brush.radialGradient(
+                        listOf(Color.White.copy(alpha = 0.075f), Color.White.copy(alpha = 0.02f), Color.Transparent),
+                        center = Offset(lx, ly), radius = maxOf(size.width, size.height) * 0.75f,
+                    ),
+                )
+                if (width > 0f && style != BorderStyle.None) {
+                    val outline = shape.createOutline(size, layoutDirection, this)
+                    drawOutline(
+                        outline,
+                        Brush.radialGradient(listOf(Color.White.copy(alpha = 0.45f), Color.Transparent), center = Offset(lx, ly), radius = maxOf(size.width, size.height) * 0.55f),
+                        style = Stroke(width.dp.toPx() * 2f),
+                    )
+                }
+            }
             if (width <= 0f || style == BorderStyle.None || style == BorderStyle.Glow) return@drawWithContent
             val outline = shape.createOutline(size, layoutDirection, this)
             val w = width.dp.toPx() * (if (style == BorderStyle.Double) 1f else 2f) // stroke is centred on the clipped edge

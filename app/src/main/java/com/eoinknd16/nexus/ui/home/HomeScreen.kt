@@ -60,6 +60,7 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.layout.positionInRoot
@@ -160,6 +161,7 @@ fun HomeScreen() {
         }
     }
 
+    com.eoinknd16.nexus.ui.fx.TiltSensor()
     val haptics = com.eoinknd16.nexus.ui.fx.rememberHaptics()
     val drawerScope = rememberCoroutineScope()
     val drawer = remember { DrawerController(drawerScope, haptics) }
@@ -264,7 +266,15 @@ fun HomeScreen() {
         var pageH by remember { mutableStateOf(0) }
         var dockIconsY by remember { mutableStateOf(Float.NaN) }
         val blurFrom = if (dockIconsY.isNaN()) pageH - trayPx.toFloat() else dockIconsY - pageTopY
-        Column(Modifier.fillMaxSize().recedeBehindDrawer { maxOf(drawer.progress.value, searchRecede) }.statusBarsPadding()) {
+        Column(Modifier.fillMaxSize().recedeBehindDrawer { maxOf(drawer.progress.value, searchRecede) }
+            .then(
+                // Middle layer: home floats a little against the backdrop as the phone tilts.
+                if (look.motion.parallax) Modifier.graphicsLayer {
+                    val px = 5.dp.toPx() * look.motion.parallaxStrength.coerceIn(0f, 3f)
+                    translationX = -com.eoinknd16.nexus.ui.fx.Tilt.x * px
+                    translationY = -com.eoinknd16.nexus.ui.fx.Tilt.y * px
+                } else Modifier,
+            ).statusBarsPadding()) {
             AnimatedVisibility(editMode, enter = slideInVertically() + fadeIn(), exit = slideOutVertically() + fadeOut()) {
                 EditBar(
                     pageName = currentPage?.name,

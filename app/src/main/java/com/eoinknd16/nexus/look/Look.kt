@@ -138,6 +138,11 @@ data class Motion(
     val strongHaptics: Boolean = false,
     /** Ask the phone for its fastest refresh rate (90/120/144Hz) while Nexus is open. */
     val highRefreshRate: Boolean = true,
+    /** Tilting the phone shifts the background and home slightly, like layered glass. */
+    val parallax: Boolean = true,
+    val parallaxStrength: Float = 1f,
+    /** A soft light that slides across panels as the phone moves. */
+    val sheen: Boolean = true,
 )
 
 // ---- Home layout ---------------------------------------------------------------

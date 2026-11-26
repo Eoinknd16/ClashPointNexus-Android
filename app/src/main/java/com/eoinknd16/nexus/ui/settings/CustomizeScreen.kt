@@ -262,6 +262,9 @@ fun CustomizeScreen() {
                     ChoiceRow("Opening an app", com.eoinknd16.nexus.look.AppLaunch.entries, m.appLaunch, { it.label }) { v -> edit { it.copy(motion = m.copy(appLaunch = v)) } }
                     ToggleRow("Strong haptics", m.strongHaptics, "Heavier buzz for gestures") { v -> edit { it.copy(motion = m.copy(strongHaptics = v)) } }
                     ToggleRow("High refresh rate", m.highRefreshRate, "Run at your screen's fastest rate (90/120Hz+) while Nexus is open") { v -> edit { it.copy(motion = m.copy(highRefreshRate = v)) } }
+                    ToggleRow("Tilt parallax", m.parallax, "Background and home shift slightly as you move the phone") { v -> edit { it.copy(motion = m.copy(parallax = v)) } }
+                    if (m.parallax) SliderRow("Parallax depth", m.parallaxStrength, 0.2f..3f, { "${(it * 100).roundToInt()}%" }) { v -> edit { it.copy(motion = m.copy(parallaxStrength = v)) } }
+                    ToggleRow("Moving light on panels", m.sheen, "A soft glint that follows how you hold the phone") { v -> edit { it.copy(motion = m.copy(sheen = v)) } }
                     ToggleRow("Glow pulse on tiles", m.pulse) { v -> edit { it.copy(motion = m.copy(pulse = v)) } }
                     ToggleRow("Haptic feedback", m.haptics) { v -> edit { it.copy(motion = m.copy(haptics = v)) } }
                     SliderRow("Press squish", 1f - m.pressScale, 0f..0.15f, { "${(it * 100).roundToInt()}%" }) { v -> edit { it.copy(motion = m.copy(pressScale = 1f - v)) } }
