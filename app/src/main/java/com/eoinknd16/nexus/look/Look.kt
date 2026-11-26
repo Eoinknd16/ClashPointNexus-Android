@@ -424,6 +424,7 @@ data class TileAction(val kind: Kind, val arg: String = "") {
         LaunchApp("Launch app"),
         WakePc("Wake PC"),
         SwitchPc("Switch PC"),
+        PcPower("Shut down / restart / sleep PC"),
         PcNav("PC remote button"),
         PcScreen("Show PC screen"),
         Url("Open link"),

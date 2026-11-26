@@ -1,5 +1,7 @@
 package com.eoinknd16.nexus.ui.home
 
+import com.eoinknd16.nexus.core.describe
+
 import com.eoinknd16.nexus.look.allBlocks
 
 import android.accessibilityservice.AccessibilityService
@@ -111,6 +113,22 @@ class TileRunner(
                     0 -> toast("Couldn't send wake packet")
                     else -> toast("Waking ${cfg.displayName}")
                 }
+            }
+            TileAction.Kind.PcPower -> c.scope.launch {
+                val what = a.arg.ifBlank { "shutdown" }
+                runCatching { c.pc.power(what) }.fold(
+                    onSuccess = { r ->
+                        toast(
+                            if (!r.ok) r.error ?: "PC refused" else when (what) {
+                                "shutdown" -> "Shutting down in 20 s"
+                                "restart" -> "Restarting in 20 s"
+                                "cancel" -> "Cancelled"
+                                else -> "PC going to sleep"
+                            },
+                        )
+                    },
+                    onFailure = { toast("PC didn't respond (${it.describe()})") },
+                )
             }
             TileAction.Kind.SwitchPc -> c.scope.launch {
                 val to = if (a.arg.isBlank() || a.arg == "next") c.pc.switchNext() else c.pc.switchTo(a.arg)

@@ -1,5 +1,11 @@
 package com.eoinknd16.nexus.ui.pc
 
+import androidx.compose.runtime.setValue
+
+import androidx.compose.runtime.mutableStateOf
+
+import androidx.compose.runtime.remember
+
 import androidx.compose.foundation.layout.width
 
 import com.eoinknd16.nexus.ui.fx.holoPanel
@@ -77,7 +83,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
-data class PcScreenState(val status: PcStatus? = null, val error: String? = null, val toast: String? = null)
+data class PcScreenState(val status: PcStatus? = null, val error: String? = null, val toast: String? = null, val powerPending: String? = null)
 
 class PcViewModel(private val c: AppContainer) : ViewModel() {
     val config = c.pcStore.state
@@ -127,6 +133,31 @@ class PcViewModel(private val c: AppContainer) : ViewModel() {
 
     fun screen(screen: String) = viewModelScope.launch {
         runCatching { c.pc.openScreen(screen) }.onFailure { e -> toast("Not delivered (${e.describe()})") }
+    }
+
+    private var powerJob: Job? = null
+
+    fun power(action: String) = viewModelScope.launch {
+        runCatching { c.pc.power(action) }.fold(
+            onSuccess = { r ->
+                if (!r.ok) return@fold toast(r.error ?: "PC refused")
+                when (action) {
+                    "shutdown", "restart" -> {
+                        powerJob?.cancel()
+                        powerJob = viewModelScope.launch {
+                            for (sLeft in 20 downTo 1) {
+                                _state.update { it.copy(powerPending = "${if (action == "shutdown") "Shutting down" else "Restarting"} in $sLeft s") }
+                                delay(1_000)
+                            }
+                            _state.update { it.copy(powerPending = null) }
+                        }
+                    }
+                    "cancel" -> { powerJob?.cancel(); _state.update { it.copy(powerPending = null) }; toast("Cancelled") }
+                    "sleep" -> toast("PC going to sleep")
+                }
+            },
+            onFailure = { e -> toast("Not delivered (${e.describe()})") },
+        )
     }
 
     fun wake() = viewModelScope.launch {
@@ -213,8 +244,26 @@ fun PcScreen() {
                 }
 
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    NexusButton("Wake", Modifier.weight(1f), icon = Icons.Filled.PowerSettingsNew, accent = Nx.Amber) { vm.wake() }
+                    Box(Modifier.weight(1f)) {
+                        var powerMenu by remember { mutableStateOf(false) }
+                        NexusButton("Power", Modifier.fillMaxWidth(), icon = Icons.Filled.PowerSettingsNew, accent = Nx.Amber) { powerMenu = true }
+                        androidx.compose.material3.DropdownMenu(expanded = powerMenu, onDismissRequest = { powerMenu = false }, containerColor = Nx.PanelSolid) {
+                            listOf("wake" to "Wake", "sleep" to "Sleep", "restart" to "Restart", "shutdown" to "Shut down").forEach { (k, l) ->
+                                androidx.compose.material3.DropdownMenuItem(
+                                    text = { Text(l, color = if (k == "shutdown") Nx.Danger else Nx.Text) },
+                                    onClick = { powerMenu = false; if (k == "wake") vm.wake() else vm.power(k) },
+                                )
+                            }
+                        }
+                    }
                     NexusButton("Quick menu", Modifier.weight(1f), icon = Icons.Filled.Widgets) { vm.nav("quickMenu") }
+                }
+                state.powerPending?.let { msg ->
+                    Spacer(Modifier.height(10.dp))
+                    Row(Modifier.fillMaxWidth().holoPanel(Nx.Danger, 0.2f).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(hud(msg), style = MaterialTheme.typography.labelLarge, color = Nx.Text, modifier = Modifier.weight(1f))
+                        NexusButton("Cancel", filled = true, accent = Nx.Danger) { vm.power("cancel") }
+                    }
                 }
                 Spacer(Modifier.height(24.dp))
 

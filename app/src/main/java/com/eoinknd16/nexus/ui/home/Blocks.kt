@@ -1,5 +1,7 @@
 package com.eoinknd16.nexus.ui.home
 
+import kotlinx.coroutines.launch
+
 import androidx.compose.material.icons.filled.Close
 
 import androidx.compose.foundation.layout.fillMaxSize
@@ -607,13 +609,16 @@ private fun ResumeView(block: HomeBlock.Resume, vm: HomeViewModel, headings: Boo
     val nexusItems by vm.continueWatching.collectAsStateWithLifecycle()
     val appItems by c.externalMedia.items.collectAsStateWithLifecycle()
     val hasAccess by c.externalMedia.hasAccess.collectAsStateWithLifecycle()
+    val hiddenNexus by c.resumeHidden.state.collectAsStateWithLifecycle()
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
     androidx.lifecycle.compose.LifecycleResumeEffect(Unit) {
         c.externalMedia.refresh()
         onPauseOrDispose { }
     }
     val cutoff = if (block.maxAgeHours > 0) System.currentTimeMillis() - block.maxAgeHours * 3_600_000L else 0L
     val entries = buildList<ResumeEntry> {
-        if (block.showNexus) nexusItems.forEach { add(ResumeEntry.Nexus(it)) }
+        // A hidden title comes back once you watch more of it.
+        if (block.showNexus) nexusItems.filter { p -> (hiddenNexus[p.id] ?: -1L) < p.updatedAt }.forEach { add(ResumeEntry.Nexus(it)) }
         if (block.showApps) appItems.filter { it.packageName !in block.hiddenApps && (it.playing || it.updatedAt >= cutoff) }
             .forEach { add(ResumeEntry.App(it)) }
     }.sortedByDescending { it.time }.take(block.maxItems.coerceIn(1, 6))
@@ -623,7 +628,10 @@ private fun ResumeView(block: HomeBlock.Resume, vm: HomeViewModel, headings: Boo
         if (headings && block.title.isNotBlank()) HudLabel(block.title)
         entries.forEach { e ->
             when (e) {
-                is ResumeEntry.Nexus -> ContinueCard(e.p) { vm.openContinue(e.p, nav) }
+                is ResumeEntry.Nexus -> ContinueCard(
+                    e.p,
+                    onDismiss = if (block.showDismiss) ({ scope.launch { c.resumeHidden.update { it + (e.p.id to System.currentTimeMillis()) } } }) else null,
+                ) { vm.openContinue(e.p, nav) }
                 is ResumeEntry.App -> AppMediaCard(
                     e.m, block.showControls, onOpen = { c.externalMedia.open(e.m, context) },
                     onDismiss = if (block.showDismiss) ({ c.externalMedia.dismiss(e.m.packageName) }) else null,
@@ -713,7 +721,7 @@ private fun AppMediaCard(
 }
 
 @Composable
-private fun ContinueCard(p: WatchProgress, onClick: () -> Unit) {
+private fun ContinueCard(p: WatchProgress, onDismiss: (() -> Unit)? = null, onClick: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().nexusPress(onClick).holoPanel().padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -733,6 +741,11 @@ private fun ContinueCard(p: WatchProgress, onClick: () -> Unit) {
         Spacer(Modifier.width(12.dp))
         Box(Modifier.size(44.dp).clip(CircleShape).background(Nx.Cyan), contentAlignment = Alignment.Center) {
             Icon(Icons.Filled.PlayArrow, "Resume", tint = Nx.Void)
+        }
+        if (onDismiss != null) {
+            Box(Modifier.size(30.dp).nexusPress(onDismiss), contentAlignment = Alignment.Center) {
+                Icon(Icons.Filled.Close, "Hide until you watch it again", tint = Nx.Muted, modifier = Modifier.size(18.dp))
+            }
         }
     }
 }

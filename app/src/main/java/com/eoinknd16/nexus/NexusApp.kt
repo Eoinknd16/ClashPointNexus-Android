@@ -67,6 +67,13 @@ class AppContainer(app: Application) {
         app, JsonStore(ds, "external_media", com.eoinknd16.nexus.media.ExternalMedia.recentSerializer, emptyList(), scope), scope,
     )
 
+    /** Nexus resume cards hidden from home: title id -> when (re-shown once watched again). */
+    val resumeHidden = JsonStore(
+        ds, "resume_hidden",
+        kotlinx.serialization.builtins.MapSerializer(kotlinx.serialization.builtins.serializer<String>(), kotlinx.serialization.builtins.serializer<Long>()),
+        emptyMap(), scope,
+    )
+
     val weather = WeatherRepository(app)
     val widgets = WidgetHost(app)
     val updater = com.eoinknd16.nexus.update.Updater(app)

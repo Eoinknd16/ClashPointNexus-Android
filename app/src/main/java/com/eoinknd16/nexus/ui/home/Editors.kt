@@ -240,7 +240,7 @@ private fun BlockEditor(block: HomeBlock, onDismiss: () -> Unit, onEdit: (HomeEd
                 }
                 SliderRow("How many to show", block.maxItems.toFloat(), 1f..6f, { "${it.roundToInt()}" }) { set(block.copy(maxItems = it.roundToInt())) }
                 ToggleRow("Previous / next buttons", block.showControls) { set(block.copy(showControls = it)) }
-                ToggleRow("× to hide a card", block.showDismiss, "Hidden until that app starts playing something again") { set(block.copy(showDismiss = it)) }
+                ToggleRow("× to hide a card", block.showDismiss, "Comes back when you watch more of it, or the app plays something again") { set(block.copy(showDismiss = it)) }
                 SliderRow("Forget paused app media after", block.maxAgeHours.toFloat(), 0f..336f, { if (it < 1f) "Never" else "${it.roundToInt()}h" }) { set(block.copy(maxAgeHours = it.roundToInt())) }
                 val pkgs = (seen.map { it.packageName } + block.hiddenApps).distinct()
                 if (pkgs.isNotEmpty()) {
@@ -348,6 +348,7 @@ private fun TileEditor(blockId: String?, existing: TileConfig?, onDismiss: () ->
                 TileAction.Kind.PcScreen -> PC_SCREEN_TARGETS.first().first
                 TileAction.Kind.Settings -> SETTINGS_TARGETS.first().first
                 TileAction.Kind.Page -> "next"
+                TileAction.Kind.PcPower -> "shutdown"
                 else -> ""
             }
             t = t.copy(action = TileAction(k, arg), icon = defaultIcon(k, t.icon))
@@ -367,6 +368,9 @@ private fun TileEditor(blockId: String?, existing: TileConfig?, onDismiss: () ->
                     TargetChips("Which PC", listOf(first) + pcs.map { it.key to it.displayName }, t.action.arg) { key, _ -> t = t.copy(action = t.action.copy(arg = key)) }
                 }
             }
+            TileAction.Kind.PcPower -> TargetChips(
+                "Do", listOf("shutdown" to "Shut down", "restart" to "Restart", "sleep" to "Sleep", "cancel" to "Cancel shutdown"), t.action.arg,
+            ) { key, label -> t = t.copy(action = t.action.copy(arg = key), label = relabel(t, label)) }
             TileAction.Kind.Page -> {
                 val targets = listOf("next" to "Next page", "prev" to "Previous page", "main" to "Main page") +
                     LookState.look.home.pages.map { it.id to it.name }
@@ -510,6 +514,7 @@ private fun TileEditor(blockId: String?, existing: TileConfig?, onDismiss: () ->
 private fun defaultIcon(kind: TileAction.Kind, current: String): String = when (kind) {
     TileAction.Kind.WakePc -> "power"
     TileAction.Kind.SwitchPc -> "computer"
+    TileAction.Kind.PcPower -> "power"
     TileAction.Kind.PcNav -> "remote"
     TileAction.Kind.PcScreen -> "computer"
     TileAction.Kind.Url -> "web"
