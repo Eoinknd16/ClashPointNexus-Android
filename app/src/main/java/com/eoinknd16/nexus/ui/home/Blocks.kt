@@ -1,5 +1,15 @@
 package com.eoinknd16.nexus.ui.home
 
+import androidx.compose.foundation.layout.fillMaxSize
+
+import androidx.compose.ui.graphics.asImageBitmap
+
+import androidx.compose.material.icons.filled.SkipPrevious
+
+import androidx.compose.material.icons.filled.SkipNext
+
+import androidx.compose.material.icons.filled.Pause
+
 import android.app.Activity
 import android.content.Intent
 import android.speech.RecognizerIntent
@@ -138,19 +148,7 @@ fun BlockContent(
             }
             TilesGrid(block, runner, editMode, onOpenFolder, onEditTile, onAddTile)
         }
-        is HomeBlock.Resume -> {
-            val items by vm.continueWatching.collectAsStateWithLifecycle()
-            val nav = LocalNav.current
-            items.firstOrNull()?.let { top ->
-                Column {
-                    if (headings && block.title.isNotBlank()) {
-                        HudLabel(block.title)
-                        Spacer(Modifier.height(10.dp))
-                    }
-                    ContinueCard(top) { vm.openContinue(top, nav) }
-                }
-            } ?: run { if (editMode) Text("Shows up when something's in progress", color = Nx.Muted, style = MaterialTheme.typography.bodyMedium) }
-        }
+        is HomeBlock.Resume -> ResumeView(block, vm, headings, editMode)
         is HomeBlock.Posters -> PostersView(block, vm, headings, editMode)
         is HomeBlock.AppRow -> AppRowView(block, runner, headings, editMode)
         is HomeBlock.Widget -> WidgetView(block)
@@ -526,6 +524,120 @@ fun TileIcon(tile: TileConfig, runner: TileRunner, accent: Color, size: androidx
 }
 
 // ---- Resume / posters / apps ---------------------------------------------------
+
+/** One entry in the Resume block: a Nexus TV title or another app's media. */
+private sealed interface ResumeEntry {
+    val time: Long
+    data class Nexus(val p: WatchProgress) : ResumeEntry { override val time get() = p.updatedAt }
+    data class App(val m: com.eoinknd16.nexus.media.ExternalMediaItem) : ResumeEntry {
+        // Something playing right now always goes first.
+        override val time get() = if (m.playing) Long.MAX_VALUE else m.updatedAt
+    }
+}
+
+@Composable
+private fun ResumeView(block: HomeBlock.Resume, vm: HomeViewModel, headings: Boolean, editMode: Boolean) {
+    val c = appContainer()
+    val nav = LocalNav.current
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val nexusItems by vm.continueWatching.collectAsStateWithLifecycle()
+    val appItems by c.externalMedia.items.collectAsStateWithLifecycle()
+    val hasAccess by c.externalMedia.hasAccess.collectAsStateWithLifecycle()
+    androidx.lifecycle.compose.LifecycleResumeEffect(Unit) {
+        c.externalMedia.refresh()
+        onPauseOrDispose { }
+    }
+    val cutoff = if (block.maxAgeHours > 0) System.currentTimeMillis() - block.maxAgeHours * 3_600_000L else 0L
+    val entries = buildList<ResumeEntry> {
+        if (block.showNexus) nexusItems.forEach { add(ResumeEntry.Nexus(it)) }
+        if (block.showApps) appItems.filter { it.packageName !in block.hiddenApps && (it.playing || it.updatedAt >= cutoff) }
+            .forEach { add(ResumeEntry.App(it)) }
+    }.sortedByDescending { it.time }.take(block.maxItems.coerceIn(1, 6))
+
+    if (entries.isEmpty() && !editMode && !(block.showApps && !hasAccess)) return
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (headings && block.title.isNotBlank()) HudLabel(block.title)
+        entries.forEach { e ->
+            when (e) {
+                is ResumeEntry.Nexus -> ContinueCard(e.p) { vm.openContinue(e.p, nav) }
+                is ResumeEntry.App -> AppMediaCard(e.m, block.showControls, onOpen = { c.externalMedia.open(e.m, context) }) { c.externalMedia }
+            }
+        }
+        if (block.showApps && !hasAccess) {
+            Row(
+                Modifier.fillMaxWidth().nexusPress({ c.externalMedia.openAccessSettings(context) }).holoPanel(Nx.Amber, glow = 0f).padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Filled.PlayArrow, null, tint = Nx.Amber)
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    "Tap to show Spotify, YouTube & other apps here. Turn on \"Nexus now playing\" in the list that opens.",
+                    style = MaterialTheme.typography.bodySmall, color = Nx.Text,
+                )
+            }
+        } else if (entries.isEmpty() && editMode) {
+            Text("Shows up when something's playing or in progress", color = Nx.Muted, style = MaterialTheme.typography.bodyMedium)
+        }
+    }
+}
+
+@Composable
+private fun AppMediaCard(
+    m: com.eoinknd16.nexus.media.ExternalMediaItem,
+    controls: Boolean,
+    onOpen: () -> Unit,
+    media: () -> com.eoinknd16.nexus.media.ExternalMedia,
+) {
+    val apps by appContainer().apps.apps.collectAsStateWithLifecycle()
+    val app = apps.firstOrNull { it.packageName == m.packageName }
+    // Keep the progress bar moving while it plays.
+    var elapsed by remember { mutableStateOf(0L) }
+    LaunchedEffect(m.playing, m.positionMs) {
+        elapsed = 0L
+        val started = System.currentTimeMillis()
+        while (m.playing) { delay(1000); elapsed = System.currentTimeMillis() - started }
+    }
+    val frac = if (m.durationMs > 0) ((m.positionMs + elapsed).toFloat() / m.durationMs).coerceIn(0f, 1f) else 0f
+    Row(
+        Modifier.fillMaxWidth().nexusPress(onOpen).holoPanel().padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(64.dp).clip(nexusShape(0.45f)).background(Nx.Deep), contentAlignment = Alignment.Center) {
+            when {
+                m.art != null -> Image(m.art.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                app != null -> Image(app.icon, null, Modifier.size(40.dp))
+                else -> Icon(Icons.Filled.PlayArrow, null, tint = Nx.Cyan)
+            }
+            if (m.art != null && app != null) {
+                Image(app.icon, null, Modifier.align(Alignment.BottomEnd).padding(3.dp).size(18.dp))
+            }
+        }
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(m.title, style = MaterialTheme.typography.titleMedium, color = Nx.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            val sub = listOfNotNull(m.subtitle.takeIf { it.isNotBlank() }, app?.label).joinToString(" · ")
+            if (sub.isNotBlank()) Text(hud(sub), style = MaterialTheme.typography.labelSmall, color = Nx.Cyan, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (m.durationMs > 0) {
+                Spacer(Modifier.height(10.dp))
+                GlowProgress(frac, Modifier.fillMaxWidth())
+            }
+        }
+        Spacer(Modifier.width(8.dp))
+        if (controls && m.controller != null) {
+            Box(Modifier.size(36.dp).nexusPress({ media().previous(m) }), contentAlignment = Alignment.Center) {
+                Icon(Icons.Filled.SkipPrevious, "Previous", tint = Nx.Cyan)
+            }
+        }
+        Box(Modifier.size(44.dp).clip(CircleShape).background(Nx.Cyan).nexusPress({ media().playPause(m) }), contentAlignment = Alignment.Center) {
+            Icon(if (m.playing) Icons.Filled.Pause else Icons.Filled.PlayArrow, if (m.playing) "Pause" else "Play", tint = Nx.Void)
+        }
+        if (controls && m.controller != null) {
+            Box(Modifier.size(36.dp).nexusPress({ media().next(m) }), contentAlignment = Alignment.Center) {
+                Icon(Icons.Filled.SkipNext, "Next", tint = Nx.Cyan)
+            }
+        }
+    }
+}
 
 @Composable
 private fun ContinueCard(p: WatchProgress, onClick: () -> Unit) {

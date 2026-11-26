@@ -60,6 +60,11 @@ class AppContainer(app: Application) {
     /** Set by Customise > "Edit home screen"; HomeScreen consumes it. */
     val homeEditRequest = kotlinx.coroutines.flow.MutableStateFlow(false)
 
+    /** Spotify, YouTube and anything else playing, for the Resume block. */
+    val externalMedia = com.eoinknd16.nexus.media.ExternalMedia(
+        app, JsonStore(ds, "external_media", com.eoinknd16.nexus.media.ExternalMedia.recentSerializer, emptyList(), scope), scope,
+    )
+
     val weather = WeatherRepository(app)
     val widgets = WidgetHost(app)
     val updater = com.eoinknd16.nexus.update.Updater(app)

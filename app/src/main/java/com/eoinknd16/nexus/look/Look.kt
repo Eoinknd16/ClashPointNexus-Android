@@ -231,6 +231,16 @@ sealed class HomeBlock {
         override val pin: BlockPin = BlockPin.None,
         override val locked: Boolean = false,
         val title: String = "Resume",
+        /** Movies & shows from Nexus TV. */
+        val showNexus: Boolean = true,
+        /** Anything else playing: Spotify, YouTube, podcasts… */
+        val showApps: Boolean = true,
+        val maxItems: Int = 2,
+        val showControls: Boolean = true,
+        /** Apps never shown here (package names). */
+        val hiddenApps: List<String> = emptyList(),
+        /** Forget app media older than this many hours (0 = keep). */
+        val maxAgeHours: Int = 72,
     ) : HomeBlock()
 
     @Serializable

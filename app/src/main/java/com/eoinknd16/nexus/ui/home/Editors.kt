@@ -216,7 +216,32 @@ private fun BlockEditor(block: HomeBlock, onDismiss: () -> Unit, onEdit: (HomeEd
                 Spacer(Modifier.height(8.dp))
                 NexusButton("Add tile", filled = true) { onEdit(HomeEdit.Tile(block.id, null)) }
             }
-            is HomeBlock.Resume -> TextRow("Heading", block.title) { set(block.copy(title = it)) }
+            is HomeBlock.Resume -> {
+                val media = c.externalMedia
+                val hasAccess by media.hasAccess.collectAsStateWithLifecycle()
+                val seen by media.items.collectAsStateWithLifecycle()
+                val apps by c.apps.apps.collectAsStateWithLifecycle()
+                TextRow("Heading", block.title) { set(block.copy(title = it)) }
+                ToggleRow("Nexus movies & shows", block.showNexus) { set(block.copy(showNexus = it)) }
+                ToggleRow("Other apps (Spotify, YouTube…)", block.showApps, "Anything that shows media controls in your notifications") { set(block.copy(showApps = it)) }
+                if (block.showApps && !hasAccess) {
+                    val ctx = LocalContext.current
+                    NexusButton("Allow \"Nexus now playing\"", accent = Nx.Amber) { media.openAccessSettings(ctx) }
+                }
+                SliderRow("How many to show", block.maxItems.toFloat(), 1f..6f, { "${it.roundToInt()}" }) { set(block.copy(maxItems = it.roundToInt())) }
+                ToggleRow("Previous / next buttons", block.showControls) { set(block.copy(showControls = it)) }
+                SliderRow("Forget paused app media after", block.maxAgeHours.toFloat(), 0f..336f, { if (it < 1f) "Never" else "${it.roundToInt()}h" }) { set(block.copy(maxAgeHours = it.roundToInt())) }
+                val pkgs = (seen.map { it.packageName } + block.hiddenApps).distinct()
+                if (pkgs.isNotEmpty()) {
+                    HudLabel("Apps seen")
+                    pkgs.forEach { pkg ->
+                        val label = apps.firstOrNull { it.packageName == pkg }?.label ?: pkg
+                        ToggleRow(label, pkg !in block.hiddenApps) { show ->
+                            set(block.copy(hiddenApps = if (show) block.hiddenApps - pkg else block.hiddenApps + pkg))
+                        }
+                    }
+                }
+            }
             is HomeBlock.Posters -> {
                 TextRow("Heading", block.title) { set(block.copy(title = it)) }
                 ChoiceRow("Show", PosterSource.entries, block.source, { it.label }) { set(block.copy(source = it)) }
