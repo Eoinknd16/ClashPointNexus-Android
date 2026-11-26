@@ -17,27 +17,30 @@ android {
         versionName = System.getenv("NEXUS_VERSION_NAME") ?: "0.1.0"
     }
 
+    // One fixed key for every build (signing/ at the repo root). Android only
+    // installs an update over an app signed with the same key, so this is what
+    // makes in-app updates work and keeps your settings across versions.
+    // Debug builds use it too, so any build can update any other.
+    val signingProps = java.util.Properties().apply {
+        val f = rootProject.file("signing/signing.properties")
+        if (f.exists()) f.inputStream().use { load(it) }
+    }
     signingConfigs {
-        // CI signs release builds with a keystore passed in through repo
-        // secrets (see .github/workflows/android.yml). Without one, release
-        // falls back to the debug key so the build still produces an
-        // installable APK -- fine for sideloading test builds.
-        create("release") {
-            val path = System.getenv("NEXUS_KEYSTORE_PATH")
-            if (path != null && file(path).exists()) {
-                storeFile = file(path)
-                storePassword = System.getenv("NEXUS_KEYSTORE_PASSWORD")
-                keyAlias = System.getenv("NEXUS_KEY_ALIAS")
-                keyPassword = System.getenv("NEXUS_KEY_PASSWORD")
-            }
+        create("nexus") {
+            storeFile = rootProject.file("signing/" + (signingProps.getProperty("storeFile") ?: "nexus-release.keystore"))
+            storePassword = signingProps.getProperty("storePassword")
+            keyAlias = signingProps.getProperty("keyAlias") ?: "nexus"
+            keyPassword = signingProps.getProperty("keyPassword")
         }
     }
 
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("nexus")
+        }
         release {
             isMinifyEnabled = false
-            val release = signingConfigs.getByName("release")
-            signingConfig = if (release.storeFile != null) release else signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("nexus")
         }
     }
 

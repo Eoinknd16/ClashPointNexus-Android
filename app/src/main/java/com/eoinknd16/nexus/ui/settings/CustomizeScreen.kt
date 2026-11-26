@@ -91,7 +91,16 @@ fun CustomizeScreen() {
 
     NexusBackdrop(intensity = 0.5f) {
         Column(Modifier.fillMaxSize().navigationBarsPadding().imePadding()) {
-            ScreenHeader("Customise", "Preset: ${look.presetName}")
+            var showPreview by remember { mutableStateOf(true) }
+            ScreenHeader("Customise", "Preset: ${look.presetName}") {
+                Text(
+                    hud(if (showPreview) "Hide preview" else "Preview"),
+                    style = MaterialTheme.typography.labelSmall, color = Nx.Cyan,
+                    modifier = Modifier.nexusPress({ showPreview = !showPreview }).padding(8.dp),
+                )
+            }
+            // Pinned above the options so it stays in view while you scroll and tweak.
+            if (showPreview) LookPreview(Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp)) {
 
                 // ---- Home layout shortcut ----
@@ -147,10 +156,10 @@ fun CustomizeScreen() {
 
                 Section("Text", "Fonts, size, label style") {
                     val f = look.fonts
-                    ChoiceRow("Headings", FontChoice.entries, f.heading, { it.label }) { v -> edit { it.copy(fonts = f.copy(heading = v)) } }
-                    ChoiceRow("Body text", FontChoice.entries, f.body, { it.label }) { v -> edit { it.copy(fonts = f.copy(body = v)) } }
-                    ChoiceRow("HUD labels", FontChoice.entries, f.label, { it.label }) { v -> edit { it.copy(fonts = f.copy(label = v)) } }
-                    ChoiceRow("Clock", FontChoice.entries, f.clock, { it.label }) { v -> edit { it.copy(fonts = f.copy(clock = v)) } }
+                    ChoiceRow("Headings", FontChoice.entries, f.heading, { it.label }, preview = { FontSample(it) }) { v -> edit { it.copy(fonts = f.copy(heading = v)) } }
+                    ChoiceRow("Body text", FontChoice.entries, f.body, { it.label }, preview = { FontSample(it) }) { v -> edit { it.copy(fonts = f.copy(body = v)) } }
+                    ChoiceRow("HUD labels", FontChoice.entries, f.label, { it.label }, preview = { FontSample(it) }) { v -> edit { it.copy(fonts = f.copy(label = v)) } }
+                    ChoiceRow("Clock", FontChoice.entries, f.clock, { it.label }, preview = { FontSample(it) }) { v -> edit { it.copy(fonts = f.copy(clock = v)) } }
                     SliderRow("Text size", f.scale, 0.8f..1.4f, { "${(it * 100).roundToInt()}%" }) { v -> edit { it.copy(fonts = f.copy(scale = v)) } }
                     ToggleRow("UPPERCASE labels", f.uppercaseLabels) { v -> edit { it.copy(fonts = f.copy(uppercaseLabels = v)) } }
                 }
@@ -307,27 +316,48 @@ private fun WeatherSettings() {
     status?.let { Text(hud(it), style = MaterialTheme.typography.labelSmall, color = Nx.Amber) }
 }
 
+/** Look + your media data in one blob. The PC link and Stremio login are left out on purpose (re-pairing is one tap). */
+@kotlinx.serialization.Serializable
+data class FullBackup(
+    val nexusBackup: Int = 1,
+    val look: Look,
+    val addons: List<com.eoinknd16.nexus.media.Addon> = emptyList(),
+    val library: List<com.eoinknd16.nexus.media.CatalogItem> = emptyList(),
+    val progress: Map<String, com.eoinknd16.nexus.media.WatchProgress> = emptyMap(),
+)
+
 @Composable
 private fun BackupSettings(context: Context) {
     val c = appContainer()
+    val scope = rememberCoroutineScope()
     var pasted by remember { mutableStateOf("") }
     var status by remember { mutableStateOf<String?>(null) }
-    fun json() = Http.json.encodeToString(Look.serializer(), LookState.look)
+    var includeData by remember { mutableStateOf(true) }
+    suspend fun json(): String {
+        if (!includeData) return Http.json.encodeToString(Look.serializer(), LookState.look)
+        val (addons, library, progress) = c.media.snapshot()
+        return Http.json.encodeToString(FullBackup.serializer(), FullBackup(look = LookState.look, addons = addons, library = library, progress = progress))
+    }
 
     Text(
         "Copy or share your full setup (colours, fonts, home layout, tiles, folders, tray, TV and player settings) " +
             "to back it up or move it to another phone. Paste one in to load it.",
         style = MaterialTheme.typography.bodyMedium, color = Nx.Muted,
     )
+    ToggleRow("Include addons, library & watch progress", includeData) { includeData = it }
     Spacer(Modifier.height(10.dp))
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         NexusButton("Copy", icon = Icons.Filled.ContentCopy) {
-            context.getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText("Nexus setup", json()))
-            status = "Setup copied"
+            scope.launch {
+                context.getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText("Nexus setup", json()))
+                status = "Setup copied"
+            }
         }
         NexusButton("Share", icon = Icons.Filled.Share) {
-            val send = Intent(Intent.ACTION_SEND).setType("application/json").putExtra(Intent.EXTRA_TEXT, json())
-            context.startActivity(Intent.createChooser(send, "Share Nexus setup").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            scope.launch {
+                val send = Intent(Intent.ACTION_SEND).setType("application/json").putExtra(Intent.EXTRA_TEXT, json())
+                context.startActivity(Intent.createChooser(send, "Share Nexus setup").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }
         }
     }
     Spacer(Modifier.height(10.dp))
@@ -337,9 +367,18 @@ private fun BackupSettings(context: Context) {
             pasted = context.getSystemService(ClipboardManager::class.java)?.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString() ?: ""
         }
         NexusButton("Load it", filled = true, enabled = pasted.isNotBlank()) {
-            runCatching { Http.json.decodeFromString(Look.serializer(), pasted) }
-                .onSuccess { loaded -> c.editLook { loaded }; status = "Setup loaded"; pasted = "" }
-                .onFailure { status = "That doesn't look like a Nexus setup" }
+            val text = pasted
+            val full = if (text.contains("\"nexusBackup\"")) runCatching { Http.json.decodeFromString(FullBackup.serializer(), text) }.getOrNull() else null
+            if (full != null) {
+                c.editLook { full.look }
+                scope.launch { c.media.restore(full.addons, full.library, full.progress) }
+                status = "Setup + ${full.addons.size} addons, ${full.library.size} library titles restored"
+                pasted = ""
+            } else {
+                runCatching { Http.json.decodeFromString(Look.serializer(), text) }
+                    .onSuccess { loaded -> c.editLook { loaded }; status = "Setup loaded"; pasted = "" }
+                    .onFailure { status = "That doesn't look like a Nexus setup" }
+            }
         }
     }
     Spacer(Modifier.height(10.dp))

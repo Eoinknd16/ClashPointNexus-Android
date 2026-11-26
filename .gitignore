@@ -10,3 +10,6 @@
 .cxx/
 *.keystore
 !debug.keystore
+# The release key IS committed on purpose (public repo, sideloaded app):
+# a fixed key is what lets each new build install over the old one.
+!signing/nexus-release.keystore

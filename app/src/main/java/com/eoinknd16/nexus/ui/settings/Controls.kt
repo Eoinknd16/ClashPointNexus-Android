@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -103,14 +104,93 @@ fun SliderRow(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+/**
+ * Pick one of several options. Up to 4 short options show as a segmented
+ * control; anything longer collapses into a single picker field that opens a
+ * clean checklist, optionally with a live [preview] of each option (a font
+ * drawn in itself, a colour swatch...). Keeps long option lists from
+ * sprawling across the screen as a wall of chips.
+ */
 @Composable
-fun <T> ChoiceRow(title: String, options: List<T>, selected: T, label: (T) -> String, onSelect: (T) -> Unit) {
+fun <T> ChoiceRow(
+    title: String,
+    options: List<T>,
+    selected: T,
+    label: (T) -> String,
+    subtitle: String? = null,
+    preview: (@Composable (T) -> Unit)? = null,
+    onSelect: (T) -> Unit,
+) {
+    val segmented = preview == null && options.size <= 4 && options.all { label(it).length <= 12 }
     Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
         Text(title, style = MaterialTheme.typography.bodyLarge, color = Nx.Text)
+        if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = Nx.Muted)
         Spacer(Modifier.height(8.dp))
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            options.forEach { o -> Chip(label(o), o == selected) { onSelect(o) } }
+        if (segmented) Segmented(options, selected, label, onSelect) else Picker(options, selected, label, preview, onSelect)
+    }
+}
+
+@Composable
+private fun <T> Segmented(options: List<T>, selected: T, label: (T) -> String, onSelect: (T) -> Unit) {
+    val shape = nexusShape(0.5f)
+    Row(Modifier.fillMaxWidth().clip(shape).border(1.dp, Nx.CyanDim, shape)) {
+        options.forEachIndexed { i, o ->
+            val on = o == selected
+            Box(
+                Modifier.weight(1f).nexusPress({ onSelect(o) })
+                    .background(if (on) Nx.Cyan else Color.Transparent)
+                    .padding(vertical = 10.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(hud(label(o)), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = if (on) Nx.Void else Nx.Cyan, maxLines = 1)
+            }
+            if (i < options.lastIndex) Box(Modifier.width(1.dp).height(38.dp).background(Nx.CyanDim))
+        }
+    }
+}
+
+@Composable
+private fun <T> Picker(options: List<T>, selected: T, label: (T) -> String, preview: (@Composable (T) -> Unit)?, onSelect: (T) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    val shape = nexusShape(0.5f)
+    Box {
+        Row(
+            Modifier.fillMaxWidth().nexusPress({ open = true }).clip(shape).background(Nx.Deep).border(1.dp, Nx.CyanDim, shape)
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (preview != null) {
+                preview(selected)
+                Spacer(Modifier.width(12.dp))
+            }
+            Text(label(selected), style = MaterialTheme.typography.bodyLarge, color = Nx.Text, modifier = Modifier.weight(1f), maxLines = 1)
+            Text("▾", style = MaterialTheme.typography.titleMedium, color = Nx.Cyan)
+        }
+        androidx.compose.material3.DropdownMenu(
+            expanded = open,
+            onDismissRequest = { open = false },
+            containerColor = Nx.PanelSolid,
+            modifier = Modifier.heightIn(max = 420.dp),
+        ) {
+            options.forEach { o ->
+                val on = o == selected
+                androidx.compose.material3.DropdownMenuItem(
+                    text = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (preview != null) {
+                                preview(o)
+                                Spacer(Modifier.width(12.dp))
+                            }
+                            Text(label(o), color = if (on) Nx.Cyan else Nx.Text, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal)
+                        }
+                    },
+                    trailingIcon = { if (on) Text("✓", color = Nx.Cyan, fontWeight = FontWeight.Bold) },
+                    onClick = {
+                        open = false
+                        onSelect(o)
+                    },
+                )
+            }
         }
     }
 }

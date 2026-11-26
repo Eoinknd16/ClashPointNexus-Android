@@ -62,10 +62,12 @@ class AppContainer(app: Application) {
 
     val weather = WeatherRepository(app)
     val widgets = WidgetHost(app)
+    val updater = com.eoinknd16.nexus.update.Updater(app)
 
     init {
         // Push every saved change into the live UI state.
         scope.launch(Dispatchers.Main) { lookStore.state.collect { LookState.apply(it) } }
+        scope.launch { updater.checkIfDue() }
     }
 
     /** Convenience for "change one thing in the look". */

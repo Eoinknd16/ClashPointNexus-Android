@@ -181,6 +181,7 @@ fun HomeScreen() {
                 verticalArrangement = Arrangement.spacedBy(home.blockSpacingDp.dp),
             ) {
                 Spacer(Modifier.height(12.dp))
+                com.eoinknd16.nexus.ui.update.UpdateBanner()
                 home.blocks.filter { it.visible || editMode }.forEach { block ->
                     BlockFrame(
                         block = block,

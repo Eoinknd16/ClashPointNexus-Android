@@ -89,6 +89,11 @@ fun SettingsScreen() {
         Column(Modifier.fillMaxSize().navigationBarsPadding().imePadding()) {
             ScreenHeader("Settings", "Nexus ${BuildConfig.VERSION_NAME}")
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+                Column {
+                    HudLabel("Updates")
+                    Spacer(Modifier.height(10.dp))
+                    com.eoinknd16.nexus.ui.update.UpdateSection()
+                }
                 PcSection()
                 StremioSection()
 

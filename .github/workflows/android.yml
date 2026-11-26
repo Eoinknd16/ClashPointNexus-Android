@@ -18,10 +18,6 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
-      # Optional: add these repo secrets to sign releases with your own key.
-      # Without them release APKs are signed with the debug key.
-      KEYSTORE_B64: ${{ secrets.NEXUS_KEYSTORE_B64 }}
     steps:
       - uses: actions/checkout@v4
 
@@ -45,12 +41,6 @@ jobs:
           echo "NEXUS_VERSION_CODE=${{ github.run_number }}" >> "$GITHUB_ENV"
           echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Decode signing key
-        if: steps.ver.outputs.tag != '' && env.KEYSTORE_B64 != ''
-        run: |
-          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/nexus.keystore"
-          echo "NEXUS_KEYSTORE_PATH=$RUNNER_TEMP/nexus.keystore" >> "$GITHUB_ENV"
-
       - name: Build debug APK
         run: ./gradlew --no-daemon assembleDebug
 
@@ -61,10 +51,6 @@ jobs:
 
       - name: Build release APK
         if: steps.ver.outputs.tag != ''
-        env:
-          NEXUS_KEYSTORE_PASSWORD: ${{ secrets.NEXUS_KEYSTORE_PASSWORD }}
-          NEXUS_KEY_ALIAS: ${{ secrets.NEXUS_KEY_ALIAS }}
-          NEXUS_KEY_PASSWORD: ${{ secrets.NEXUS_KEY_PASSWORD }}
         run: |
           ./gradlew --no-daemon assembleRelease
           cp app/build/outputs/apk/release/*.apk "nexus-${{ steps.ver.outputs.tag }}.apk"

@@ -272,6 +272,18 @@ class MediaRepository(
 
     suspend fun stremioUnlink() = accountStore.set(StremioAccountState())
 
+    // ---- Backup -------------------------------------------------------------------
+
+    suspend fun snapshot(): Triple<List<Addon>, List<CatalogItem>, Map<String, WatchProgress>> =
+        Triple(addonStore.get(), libraryStore.get(), progressStore.get())
+
+    suspend fun restore(addons: List<Addon>, library: List<CatalogItem>, progress: Map<String, WatchProgress>) {
+        addonStore.set(addons)
+        libraryStore.set(library)
+        progressStore.set(progress)
+        clearCaches()
+    }
+
     // ---- Progress + library -----------------------------------------------------
 
     private fun key(type: CatalogType, id: String) = "${type.name}:$id"

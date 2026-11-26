@@ -119,7 +119,21 @@ fun HomeEditorHost(edit: HomeEdit, onDismiss: () -> Unit, onEdit: (HomeEdit) -> 
 private fun BlockEditor(block: HomeBlock, onDismiss: () -> Unit, onEdit: (HomeEdit) -> Unit) {
     val c = appContainer()
     fun set(b: HomeBlock) = c.editLook { it.updateBlock(block.id) { b } }
+    val vm = com.eoinknd16.nexus.ui.nexusViewModel { HomeViewModel(it) }
+    val context = LocalContext.current
+    val nav = com.eoinknd16.nexus.ui.LocalNav.current
+    val runner = remember { TileRunner(context, c, nav) {} }
     EditorSheet(block.kindLabel, onDismiss) {
+        // Live preview of this block with the settings below applied.
+        if (block !is HomeBlock.Widget && block !is HomeBlock.Spacer) {
+            Box(
+                Modifier.fillMaxWidth().heightIn(max = 280.dp).clip(nexusShape()).background(Nx.Void)
+                    .border(1.dp, Nx.CyanDim, nexusShape()).padding(12.dp),
+            ) {
+                BlockContent(block, vm, runner, editMode = false, onOpenFolder = { _, _ -> }, onEditTile = {}, onAddTile = {})
+            }
+            Spacer(Modifier.height(14.dp))
+        }
         when (block) {
             is HomeBlock.Clock -> {
                 ToggleRow("24-hour", block.use24h) { set(block.copy(use24h = it)) }
@@ -231,8 +245,26 @@ private fun TileEditor(blockId: String?, existing: TileConfig?, onDismiss: () ->
         onDismiss()
     }
 
+    val context = LocalContext.current
+    val nav = com.eoinknd16.nexus.ui.LocalNav.current
+    val runner = remember { TileRunner(context, c, nav) {} }
     EditorSheet(if (existing == null) (if (blockId == null) "Add to tray" else "New tile") else "Edit · ${existing.label}", onDismiss) {
-        ChoiceRow("What it does", TileAction.Kind.entries, t.action.kind, { it.label }) { k ->
+        // Live preview: exactly how the tile (or tray slot) will look.
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.width(150.dp).height(140.dp)) {
+                TileView(tile = t, runner = runner, showSublabel = true, modifier = Modifier.fillMaxWidth().height(140.dp), onOpenFolder = { _, _ -> }, onLongPress = {})
+            }
+            Spacer(Modifier.width(20.dp))
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                TileIcon(t, runner, LookState.palette.slot(t.color), LookState.look.home.dock.iconSizeDp.dp)
+                Text(hud("In the tray"), style = MaterialTheme.typography.labelSmall, color = Nx.Muted)
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+        ChoiceRow(
+            "What it does", TileAction.Kind.entries, t.action.kind, { it.label },
+            preview = { k -> Icon(IconCatalog.icon(defaultIcon(k, "bolt")), null, tint = Nx.Cyan, modifier = Modifier.size(20.dp)) },
+        ) { k ->
             val arg = when (k) {
                 TileAction.Kind.Screen -> SCREEN_TARGETS.first().first
                 TileAction.Kind.PcNav -> PC_NAV_TARGETS.first().first
@@ -288,19 +320,35 @@ private fun TileEditor(blockId: String?, existing: TileConfig?, onDismiss: () ->
         HudLabel("Look")
         TextRow("Label", t.label) { t = t.copy(label = it) }
         TextRow("Sub-label", t.sublabel) { t = t.copy(sublabel = it) }
-        ChoiceRow("Colour", listOf("accent", "accent2", "warn", "good", "danger", "muted", "text"), if (t.color.startsWith("#")) "" else t.color, { it }) { t = t.copy(color = it) }
-        ColorRow("Custom colour", if (t.color.startsWith("#")) t.color else "#3CF2FF") { t = t.copy(color = it) }
+        val slots = listOf("accent" to "Accent", "accent2" to "Second accent", "warn" to "Highlight", "good" to "Success", "danger" to "Danger", "muted" to "Muted", "text" to "Text", "custom" to "Custom colour")
+        ChoiceRow(
+            "Colour", slots.map { it.first }, if (t.color.startsWith("#")) "custom" else t.color,
+            { key -> slots.first { it.first == key }.second },
+            preview = { key -> com.eoinknd16.nexus.ui.settings.Swatch(if (key == "custom") LookState.palette.slot(t.color) else LookState.palette.slot(key)) },
+        ) { key -> t = t.copy(color = if (key == "custom") (if (t.color.startsWith("#")) t.color else "#3CF2FF") else key) }
+        if (t.color.startsWith("#")) ColorRow("Custom colour", t.color) { t = t.copy(color = it) }
         if (!(t.action.kind == TileAction.Kind.LaunchApp && t.useAppIcon)) {
-            Text("Icon", style = MaterialTheme.typography.bodyLarge, color = Nx.Text, modifier = Modifier.padding(top = 6.dp))
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(vertical = 8.dp)) {
-                IconCatalog.all.forEach { (key, icon) ->
-                    val sel = key == t.icon
-                    Box(
-                        Modifier.size(42.dp).nexusPress({ t = t.copy(icon = key) }).clip(nexusShape(0.4f))
-                            .background(if (sel) Nx.Cyan.copy(alpha = 0.3f) else Nx.Deep)
-                            .border(1.dp, if (sel) Nx.Cyan else Nx.CyanDim, nexusShape(0.4f)),
-                        contentAlignment = Alignment.Center,
-                    ) { Icon(icon, key, tint = if (sel) Nx.Cyan else Nx.Text) }
+            var pickIcon by remember { mutableStateOf(false) }
+            Row(
+                Modifier.fillMaxWidth().nexusPress({ pickIcon = !pickIcon }).padding(vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Icon", style = MaterialTheme.typography.bodyLarge, color = Nx.Text, modifier = Modifier.weight(1f))
+                Icon(IconCatalog.icon(t.icon), null, tint = LookState.palette.slot(t.color))
+                Spacer(Modifier.width(10.dp))
+                Text(hud(if (pickIcon) "Done" else "Change"), style = MaterialTheme.typography.labelSmall, color = Nx.Cyan)
+            }
+            if (pickIcon) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(bottom = 8.dp)) {
+                    IconCatalog.all.forEach { (key, icon) ->
+                        val sel = key == t.icon
+                        Box(
+                            Modifier.size(42.dp).nexusPress({ t = t.copy(icon = key); pickIcon = false }).clip(nexusShape(0.4f))
+                                .background(if (sel) Nx.Cyan.copy(alpha = 0.3f) else Nx.Deep)
+                                .border(1.dp, if (sel) Nx.Cyan else Nx.CyanDim, nexusShape(0.4f)),
+                            contentAlignment = Alignment.Center,
+                        ) { Icon(icon, key, tint = if (sel) Nx.Cyan else Nx.Text) }
+                    }
                 }
             }
         }
