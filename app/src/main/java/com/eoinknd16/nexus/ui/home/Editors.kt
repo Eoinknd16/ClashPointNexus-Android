@@ -1,5 +1,11 @@
 package com.eoinknd16.nexus.ui.home
 
+import androidx.compose.foundation.layout.navigationBars
+
+import androidx.compose.foundation.layout.statusBars
+
+import androidx.compose.foundation.layout.WindowInsets
+
 import com.eoinknd16.nexus.ui.settings.Hint
 
 import androidx.compose.ui.graphics.Color
@@ -894,8 +900,8 @@ data class SystemBarPadding(val top: androidx.compose.ui.unit.Dp, val bottom: an
 @Composable
 fun rememberSystemBarPadding(): SystemBarPadding {
     val d = androidx.compose.ui.platform.LocalDensity.current
-    val top = androidx.compose.foundation.layout.WindowInsets.statusBars.getTop(d)
-    val bottom = androidx.compose.foundation.layout.WindowInsets.navigationBars.getBottom(d)
+    val top = WindowInsets.statusBars.getTop(d)
+    val bottom = WindowInsets.navigationBars.getBottom(d)
     val view = androidx.compose.ui.platform.LocalView.current
     // Fallback if Compose hasn't seen insets yet: ask the window directly.
     val raw = androidx.core.view.ViewCompat.getRootWindowInsets(view)
