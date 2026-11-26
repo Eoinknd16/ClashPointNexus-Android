@@ -164,10 +164,13 @@ private fun BlockEditor(block: HomeBlock, onDismiss: () -> Unit, onEdit: (HomeEd
                 Modifier.fillMaxWidth().heightIn(max = 280.dp).clip(nexusShape()).background(Nx.Void)
                     .border(1.dp, Nx.CyanDim, nexusShape()).padding(12.dp),
             ) {
-                BlockContent(block, vm, runner, editMode = false, onOpenFolder = { _, _ -> }, onEditTile = {}, onAddTile = {})
+                SizedBlock(LookState.look.home.blockSizes[block.id]) {
+                    BlockContent(block, vm, runner, editMode = false, onOpenFolder = { _, _ -> }, onEditTile = {}, onAddTile = {})
+                }
             }
             Spacer(Modifier.height(14.dp))
         }
+        BlockSizeSection(block.id)
         when (block) {
             is HomeBlock.Clock -> {
                 ToggleRow("24-hour", block.use24h) { set(block.copy(use24h = it)) }
@@ -202,6 +205,13 @@ private fun BlockEditor(block: HomeBlock, onDismiss: () -> Unit, onEdit: (HomeEd
                 SliderRow("Columns", block.columns.toFloat(), 1f..6f, { it.roundToInt().toString() }, steps = 4) { set(block.copy(columns = it.roundToInt())) }
                 SliderRow("Tile shape (width ÷ height)", block.aspect, 0.5f..3f, { "%.2f".format(it) }) { set(block.copy(aspect = it)) }
                 ToggleRow("Show sub-labels", block.showSublabels) { set(block.copy(showSublabels = it)) }
+                SliderRow("Fixed row height", block.rowHeightDp, 0f..260f, { if (it < 1f) "Off (use shape)" else "${it.roundToInt()}dp" }) { set(block.copy(rowHeightDp = if (it < 20f) 0f else it)) }
+                SliderRow("Gap between tiles", block.gapDp, 0f..40f, { "${it.roundToInt()}dp" }) { set(block.copy(gapDp = it)) }
+                ChoiceRow("Tile layout", com.eoinknd16.nexus.look.TileLayout.entries, block.tileLayout, { it.label }) { set(block.copy(tileLayout = it)) }
+                SliderRow("Icon size", block.iconSizeDp, 16f..120f, { "${it.roundToInt()}dp" }) { set(block.copy(iconSizeDp = it)) }
+                SliderRow("Text size", block.labelScale, 0.5f..2.5f, { "${(it * 100).roundToInt()}%" }) { set(block.copy(labelScale = it)) }
+                SliderRow("Inner padding", block.paddingDp, 0f..40f, { "${it.roundToInt()}dp" }) { set(block.copy(paddingDp = it)) }
+                Text("Make one tile bigger: edit it and set its width/height in grid cells.", style = MaterialTheme.typography.labelSmall, color = Nx.Muted)
                 Spacer(Modifier.height(8.dp))
                 HudLabel("Tiles")
                 block.tiles.forEachIndexed { i, t ->
@@ -230,6 +240,7 @@ private fun BlockEditor(block: HomeBlock, onDismiss: () -> Unit, onEdit: (HomeEd
                 }
                 SliderRow("How many to show", block.maxItems.toFloat(), 1f..6f, { "${it.roundToInt()}" }) { set(block.copy(maxItems = it.roundToInt())) }
                 ToggleRow("Previous / next buttons", block.showControls) { set(block.copy(showControls = it)) }
+                ToggleRow("× to hide a card", block.showDismiss, "Hidden until that app starts playing something again") { set(block.copy(showDismiss = it)) }
                 SliderRow("Forget paused app media after", block.maxAgeHours.toFloat(), 0f..336f, { if (it < 1f) "Never" else "${it.roundToInt()}h" }) { set(block.copy(maxAgeHours = it.roundToInt())) }
                 val pkgs = (seen.map { it.packageName } + block.hiddenApps).distinct()
                 if (pkgs.isNotEmpty()) {
@@ -246,6 +257,7 @@ private fun BlockEditor(block: HomeBlock, onDismiss: () -> Unit, onEdit: (HomeEd
                 TextRow("Heading", block.title) { set(block.copy(title = it)) }
                 ChoiceRow("Show", PosterSource.entries, block.source, { it.label }) { set(block.copy(source = it)) }
                 SliderRow("How many", block.count.toFloat(), 3f..40f, { it.roundToInt().toString() }) { set(block.copy(count = it.roundToInt())) }
+                SliderRow("Poster size", block.posterWidthDp, 56f..200f, { "${it.roundToInt()}dp wide" }) { set(block.copy(posterWidthDp = it)) }
             }
             is HomeBlock.AppRow -> {
                 TextRow("Heading", block.title) { set(block.copy(title = it)) }
@@ -468,6 +480,12 @@ private fun TileEditor(blockId: String?, existing: TileConfig?, onDismiss: () ->
         ColorRow("Border colour", b.color?.takeIf { it.startsWith("#") } ?: LookState.palette.slot(t.color).toHex()) { v -> t = t.copy(border = b.copy(color = v)) }
         if (t.border != null) NexusButton("Reset border to default", accent = Nx.Muted) { t = t.copy(border = null) }
         Spacer(Modifier.height(8.dp))
+        if (blockId != null) {
+            val cols = (LookState.look.allBlocks.firstOrNull { it.id == blockId } as? HomeBlock.Tiles)?.columns?.coerceIn(1, 6) ?: 4
+            HudLabel("Size in the grid")
+            SliderRow("Width", t.colSpan.toFloat().coerceAtMost(cols.toFloat()), 1f..cols.toFloat().coerceAtLeast(2f), { "${it.roundToInt()} column" + if (it.roundToInt() > 1) "s" else "" }) { t = t.copy(colSpan = it.roundToInt()) }
+            SliderRow("Height", t.rowSpan.toFloat(), 1f..4f, { "${it.roundToInt()} row" + if (it.roundToInt() > 1) "s" else "" }) { t = t.copy(rowSpan = it.roundToInt()) }
+        }
         TextRow("Background image URL (optional)", t.image ?: "", "https://…/image.jpg", KeyboardType.Uri) { t = t.copy(image = it.ifBlank { null }) }
 
         Spacer(Modifier.height(16.dp))
@@ -706,4 +724,23 @@ private fun PagesEditor(onDismiss: () -> Unit) {
             onDismiss()
         }
     }
+}
+
+
+/** Width / alignment / scale for any block. */
+@Composable
+private fun BlockSizeSection(blockId: String) {
+    val c = appContainer()
+    val size = LookState.look.home.blockSizes[blockId] ?: com.eoinknd16.nexus.look.BlockSize()
+    fun set(v: com.eoinknd16.nexus.look.BlockSize) = c.editLook { l ->
+        l.copy(home = l.home.copy(blockSizes = l.home.blockSizes + (blockId to v)))
+    }
+    HudLabel("Size")
+    SliderRow("Width", size.widthPct, 20f..100f, { "${it.roundToInt()}% of screen" }) { set(size.copy(widthPct = it)) }
+    if (size.widthPct < 99.5f || kotlin.math.abs(size.scale - 1f) > 0.01f) {
+        ChoiceRow("Sit", com.eoinknd16.nexus.look.Align.entries, size.align, { when (it) { com.eoinknd16.nexus.look.Align.Start -> "Left"; com.eoinknd16.nexus.look.Align.Center -> "Centre"; else -> "Right" } }) { set(size.copy(align = it)) }
+    }
+    SliderRow("Scale", size.scale, 0.4f..2f, { "${(it * 100).roundToInt()}%" }) { set(size.copy(scale = it)) }
+    if (size != com.eoinknd16.nexus.look.BlockSize()) NexusButton("Reset size", accent = Nx.Muted) { set(com.eoinknd16.nexus.look.BlockSize()) }
+    Spacer(Modifier.height(8.dp))
 }

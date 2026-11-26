@@ -147,6 +147,22 @@ fun newId(): String = UUID.randomUUID().toString().take(8)
 @Serializable
 enum class Align { Start, Center, End }
 
+/** How a tile arranges its icon and text. */
+@Serializable
+enum class TileLayout(val label: String) {
+    Stack("Icon top, text bottom"), Centered("Centred"), Inline("Icon beside text"), IconOnly("Icon only"),
+}
+
+/** Size and placement of any home block (stored by block id in [HomeLayout.blockSizes]). */
+@Serializable
+data class BlockSize(
+    /** Width as a % of the screen's content width. */
+    val widthPct: Float = 100f,
+    val align: Align = Align.Center,
+    /** Shrinks or enlarges everything inside the block. */
+    val scale: Float = 1f,
+)
+
 /**
  * One thing on the home screen. The home screen is just an ordered list of
  * these -- add, remove, reorder and configure any of them from edit mode.
@@ -221,6 +237,13 @@ sealed class HomeBlock {
         val aspect: Float = 1.05f,
         val showSublabels: Boolean = true,
         val tiles: List<TileConfig> = emptyList(),
+        val gapDp: Float = 12f,
+        /** 0 = use [aspect]; otherwise every row is this tall. */
+        val rowHeightDp: Float = 0f,
+        val iconSizeDp: Float = 40f,
+        val labelScale: Float = 1f,
+        val paddingDp: Float = 14f,
+        val tileLayout: TileLayout = TileLayout.Stack,
     ) : HomeBlock()
 
     @Serializable
@@ -241,6 +264,8 @@ sealed class HomeBlock {
         val hiddenApps: List<String> = emptyList(),
         /** Forget app media older than this many hours (0 = keep). */
         val maxAgeHours: Int = 72,
+        /** Small × on app cards to hide them until something new starts. */
+        val showDismiss: Boolean = true,
     ) : HomeBlock()
 
     @Serializable
@@ -253,6 +278,7 @@ sealed class HomeBlock {
         val title: String = "Recently watched",
         val source: PosterSource = PosterSource.Recent,
         val count: Int = 15,
+        val posterWidthDp: Float = 96f,
     ) : HomeBlock()
 
     @Serializable
@@ -465,6 +491,9 @@ data class TileConfig(
     val border: BorderOverride? = null,
     /** Per-tile entrance animation; null = Customise › Motion. */
     val entrance: Entrance? = null,
+    /** How many columns / rows of its grid this tile covers. */
+    val colSpan: Int = 1,
+    val rowSpan: Int = 1,
 )
 
 @Serializable
@@ -537,6 +566,8 @@ data class HomeLayout(
     val pages: List<HomePage> = emptyList(),
     /** Little dots above the tray showing which page you're on. */
     val showPageDots: Boolean = true,
+    /** Per-block width / alignment / scale, by block id. */
+    val blockSizes: Map<String, BlockSize> = emptyMap(),
 ) {
     companion object {
         fun defaultTiles(): List<TileConfig> = listOf(

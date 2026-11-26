@@ -61,6 +61,10 @@ data class ExternalRecent(
     val positionMs: Long = 0,
     val durationMs: Long = 0,
     val updatedAt: Long = 0,
+    /** When playback last started (play pressed, or a new track/video). */
+    val startedAt: Long = 0,
+    /** When it was hidden from home; it stays hidden until [startedAt] is later. */
+    val dismissedAt: Long = 0,
 )
 
 /**
@@ -86,6 +90,7 @@ class ExternalMedia(
     val hasAccess: StateFlow<Boolean> = _hasAccess
 
     private var live: List<MediaController> = emptyList()
+    private val wasPlaying = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
     private var registered = false
 
     init {
@@ -146,9 +151,21 @@ class ExternalMedia(
                 runCatching { File(artDir, "${c.packageName}.jpg").outputStream().use { bmp.compress(Bitmap.CompressFormat.JPEG, 85, it) } }
             }
         }
-        val entry = ExternalRecent(c.packageName, title, sub, position(c), md.getLong(MediaMetadata.METADATA_KEY_DURATION), System.currentTimeMillis())
+        val playing = c.playbackState?.state == PlaybackState.STATE_PLAYING
+        val now = System.currentTimeMillis()
         scope.launch {
-            store.update { old -> (listOf(entry) + old.filterNot { it.packageName == c.packageName }).take(12) }
+            store.update { old ->
+                val prev = old.firstOrNull { it.packageName == c.packageName }
+                val wasPlaying = wasPlaying[c.packageName] == true
+                // Starting playback or a new title counts as a fresh start (re-shows a hidden card).
+                val started = if (playing && (!wasPlaying || prev?.title != title)) now else prev?.startedAt ?: 0
+                val entry = ExternalRecent(
+                    c.packageName, title, sub, position(c), md.getLong(MediaMetadata.METADATA_KEY_DURATION), now,
+                    startedAt = started, dismissedAt = prev?.dismissedAt ?: 0,
+                )
+                (listOf(entry) + old.filterNot { it.packageName == c.packageName }).take(12)
+            }
+            wasPlaying[c.packageName] = playing
         }
         publish()
     }
@@ -165,9 +182,11 @@ class ExternalMedia(
 
     private fun publish() {
         val liveByPkg = live.associateBy { it.packageName }
-        val recents = store.value
+        val allRecents = store.value
+        val hidden = allRecents.filter { it.dismissedAt > 0 && it.dismissedAt >= it.startedAt }.map { it.packageName }.toSet()
+        val recents = allRecents.filter { it.packageName !in hidden }
         val out = mutableListOf<ExternalMediaItem>()
-        live.forEach { c ->
+        live.filter { it.packageName !in hidden }.forEach { c ->
             val md = c.metadata
             val title = md?.getString(MediaMetadata.METADATA_KEY_TITLE)?.takeIf { it.isNotBlank() } ?: return@forEach
             out += ExternalMediaItem(
@@ -225,6 +244,15 @@ class ExternalMedia(
         if (pending != null && runCatching { pending.send() }.isSuccess) return
         context.packageManager.getLaunchIntentForPackage(item.packageName)?.let {
             runCatching { from.startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+        }
+    }
+
+    /** Hide this app's card until it starts playing something again. */
+    fun dismiss(pkg: String) = scope.launch {
+        val now = System.currentTimeMillis()
+        store.update { list ->
+            if (list.none { it.packageName == pkg }) list
+            else list.map { if (it.packageName == pkg) it.copy(dismissedAt = now) else it }
         }
     }
 

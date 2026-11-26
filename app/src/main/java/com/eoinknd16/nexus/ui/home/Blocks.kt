@@ -1,5 +1,7 @@
 package com.eoinknd16.nexus.ui.home
 
+import androidx.compose.material.icons.filled.Close
+
 import androidx.compose.foundation.layout.fillMaxSize
 
 import androidx.compose.ui.graphics.asImageBitmap
@@ -409,30 +411,68 @@ private fun TilesGrid(
 ) {
     val cols = b.columns.coerceIn(1, 6)
     val cells: List<TileConfig?> = b.tiles + if (editMode || b.tiles.isEmpty()) listOf(null) else emptyList()
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        cells.chunked(cols).forEachIndexed { r, row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                row.forEachIndexed { ci, tile ->
-                    val mod = Modifier.weight(1f).aspectRatio(b.aspect.coerceIn(0.4f, 3f))
-                    if (tile == null) {
-                        AddCell(mod, onAddTile)
-                    } else {
-                        TileView(
-                            tile = tile,
-                            runner = runner,
-                            showSublabel = b.showSublabels,
-                            index = r * cols + ci,
-                            modifier = mod,
-                            onOpenFolder = onOpenFolder,
-                            onLongPress = { onEditTile(tile) },
-                        )
-                    }
-                }
-                repeat(cols - row.size) { Spacer(Modifier.weight(1f)) }
+    val spans = cells.map { t -> (t?.colSpan ?: 1).coerceIn(1, cols) to (t?.rowSpan ?: 1).coerceIn(1, 4) }
+    val gap = b.gapDp.coerceIn(0f, 40f).dp
+    val style = TileStyle(b.iconSizeDp.dp, b.labelScale, b.paddingDp.dp, b.tileLayout)
+    androidx.compose.ui.layout.Layout(
+        content = {
+            cells.forEachIndexed { i, tile ->
+                if (tile == null) AddCell(Modifier, onAddTile)
+                else TileView(
+                    tile = tile, runner = runner, showSublabel = b.showSublabels, index = i, modifier = Modifier,
+                    onOpenFolder = onOpenFolder, onLongPress = { onEditTile(tile) }, style = style,
+                )
+            }
+        },
+    ) { measurables, constraints ->
+        // Pack tiles into the grid in order, each taking colSpan × rowSpan cells
+        // at the first spot it fits (like a home-screen grid).
+        val g = gap.roundToPx()
+        val w = constraints.maxWidth
+        val cellW = ((w - g * (cols - 1)) / cols).coerceAtLeast(1)
+        val cellH = if (b.rowHeightDp > 0f) b.rowHeightDp.dp.roundToPx() else (cellW / b.aspect.coerceIn(0.4f, 3f)).toInt()
+        val taken = mutableListOf<BooleanArray>()
+        fun free(r: Int, c: Int, cs: Int, rs: Int): Boolean {
+            if (c + cs > cols) return false
+            for (rr in r until r + rs) for (cc in c until c + cs) if (rr < taken.size && taken[rr][cc]) return false
+            return true
+        }
+        val spots = spans.map { (cs, rs) ->
+            var r = 0
+            var spot: Pair<Int, Int>? = null
+            while (spot == null) {
+                for (c in 0..cols - cs) if (free(r, c, cs, rs)) { spot = r to c; break }
+                if (spot == null) r++
+            }
+            val (sr, sc) = spot
+            while (taken.size < sr + rs) taken.add(BooleanArray(cols))
+            for (rr in sr until sr + rs) for (cc in sc until sc + cs) taken[rr][cc] = true
+            spot
+        }
+        val placeables = measurables.mapIndexed { i, m ->
+            val (cs, rs) = spans[i]
+            val pw = cellW * cs + g * (cs - 1)
+            val ph = cellH * rs + g * (rs - 1)
+            m.measure(androidx.compose.ui.unit.Constraints.fixed(pw, ph))
+        }
+        val rows = taken.size
+        val height = if (rows == 0) 0 else cellH * rows + g * (rows - 1)
+        layout(w, height) {
+            placeables.forEachIndexed { i, p ->
+                val (r, c) = spots[i]
+                p.place(c * (cellW + g), r * (cellH + g))
             }
         }
     }
 }
+
+/** How a Tiles block draws its tiles (from the block's settings). */
+data class TileStyle(
+    val iconSize: androidx.compose.ui.unit.Dp = 40.dp,
+    val labelScale: Float = 1f,
+    val padding: androidx.compose.ui.unit.Dp = 14.dp,
+    val layout: com.eoinknd16.nexus.look.TileLayout = com.eoinknd16.nexus.look.TileLayout.Stack,
+)
 
 @Composable
 private fun AddCell(modifier: Modifier, onClick: () -> Unit) {
@@ -456,6 +496,7 @@ fun TileView(
     onOpenFolder: (TileConfig, Offset) -> Unit,
     onLongPress: () -> Unit,
     index: Int = 0,
+    style: TileStyle = TileStyle(),
 ) {
     val accent = LookState.palette.slot(tile.color)
     var center by remember { mutableStateOf(Offset.Zero) }
@@ -480,12 +521,35 @@ fun TileView(
         tile.image?.takeIf { it.isNotBlank() }?.let {
             AsyncImage(it, null, contentScale = ContentScale.Crop, modifier = Modifier.matchParentSize().alpha(0.45f))
         }
-        Column(Modifier.padding(14.dp)) {
-            TileIcon(tile, runner, accent, 40.dp)
-            Spacer(Modifier.weight(1f))
-            Text(tile.label, style = MaterialTheme.typography.titleMedium, color = Nx.Text, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (showSublabel && tile.sublabel.isNotBlank()) {
-                Text(hud(tile.sublabel), style = MaterialTheme.typography.labelSmall, color = Nx.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        val titleStyle = MaterialTheme.typography.titleMedium.let { it.copy(fontSize = it.fontSize * style.labelScale.coerceIn(0.5f, 2.5f)) }
+        val subStyle = MaterialTheme.typography.labelSmall.let { it.copy(fontSize = it.fontSize * style.labelScale.coerceIn(0.5f, 2.5f)) }
+        val texts: @Composable (Alignment.Horizontal) -> Unit = { h ->
+            Column(horizontalAlignment = h) {
+                Text(tile.label, style = titleStyle, color = Nx.Text, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (showSublabel && tile.sublabel.isNotBlank()) {
+                    Text(hud(tile.sublabel), style = subStyle, color = Nx.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        }
+        val pad = Modifier.matchParentSize().padding(style.padding.coerceIn(0.dp, 40.dp))
+        when (style.layout) {
+            com.eoinknd16.nexus.look.TileLayout.Stack -> Column(pad) {
+                TileIcon(tile, runner, accent, style.iconSize)
+                Spacer(Modifier.weight(1f))
+                texts(Alignment.Start)
+            }
+            com.eoinknd16.nexus.look.TileLayout.Centered -> Column(pad, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                TileIcon(tile, runner, accent, style.iconSize)
+                Spacer(Modifier.height(8.dp))
+                texts(Alignment.CenterHorizontally)
+            }
+            com.eoinknd16.nexus.look.TileLayout.Inline -> Row(pad, verticalAlignment = Alignment.CenterVertically) {
+                TileIcon(tile, runner, accent, style.iconSize)
+                Spacer(Modifier.width(12.dp))
+                Box(Modifier.weight(1f)) { texts(Alignment.Start) }
+            }
+            com.eoinknd16.nexus.look.TileLayout.IconOnly -> Box(pad, contentAlignment = Alignment.Center) {
+                TileIcon(tile, runner, accent, style.iconSize)
             }
         }
     }
@@ -560,7 +624,10 @@ private fun ResumeView(block: HomeBlock.Resume, vm: HomeViewModel, headings: Boo
         entries.forEach { e ->
             when (e) {
                 is ResumeEntry.Nexus -> ContinueCard(e.p) { vm.openContinue(e.p, nav) }
-                is ResumeEntry.App -> AppMediaCard(e.m, block.showControls, onOpen = { c.externalMedia.open(e.m, context) }) { c.externalMedia }
+                is ResumeEntry.App -> AppMediaCard(
+                    e.m, block.showControls, onOpen = { c.externalMedia.open(e.m, context) },
+                    onDismiss = if (block.showDismiss) ({ c.externalMedia.dismiss(e.m.packageName) }) else null,
+                ) { c.externalMedia }
             }
         }
         if (block.showApps && !hasAccess) {
@@ -586,6 +653,7 @@ private fun AppMediaCard(
     m: com.eoinknd16.nexus.media.ExternalMediaItem,
     controls: Boolean,
     onOpen: () -> Unit,
+    onDismiss: (() -> Unit)?,
     media: () -> com.eoinknd16.nexus.media.ExternalMedia,
 ) {
     val apps by appContainer().apps.apps.collectAsStateWithLifecycle()
@@ -636,6 +704,11 @@ private fun AppMediaCard(
                 Icon(Icons.Filled.SkipNext, "Next", tint = Nx.Cyan)
             }
         }
+        if (onDismiss != null) {
+            Box(Modifier.size(30.dp).nexusPress(onDismiss), contentAlignment = Alignment.Center) {
+                Icon(Icons.Filled.Close, "Hide until something new plays", tint = Nx.Muted, modifier = Modifier.size(18.dp))
+            }
+        }
     }
 }
 
@@ -684,7 +757,7 @@ private fun PostersView(b: HomeBlock.Posters, vm: HomeViewModel, headings: Boole
         }
         LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             items(items, key = { "${it.first.type}:${it.first.id}" }) { (item, progress) ->
-                PosterCard(item, width = 96.dp, progress = progress) { nav.navigate(Routes.detail(item.type.name, item.id)) }
+                PosterCard(item, width = b.posterWidthDp.coerceIn(56f, 200f).dp, progress = progress) { nav.navigate(Routes.detail(item.type.name, item.id)) }
             }
         }
     }

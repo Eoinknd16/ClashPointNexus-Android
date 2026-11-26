@@ -192,6 +192,7 @@ fun HomeScreen() {
                     c.editLook { it.removeBlock(block.id) }
                 },
             ) {
+                SizedBlock(home.blockSizes[block.id]) {
                 BlockContent(
                     block = block,
                     vm = vm,
@@ -204,6 +205,7 @@ fun HomeScreen() {
                     },
                     onAddTile = { editing = HomeEdit.Tile(block.id, null) },
                 )
+                }
             }
         }
     }
@@ -456,6 +458,42 @@ private fun PageDots(order: List<String?>, current: String?, onPick: (String?) -
                     .background(if (on) Nx.Cyan else Nx.Muted.copy(alpha = 0.5f))
                     .nexusPress({ onPick(id) }),
             )
+        }
+    }
+}
+
+
+/**
+ * Applies a block's size settings: narrower than the screen (aligned left,
+ * centre or right) and/or scaled up or down as a whole. Scaling lays the
+ * block out at the matching width first, so it reflows rather than overflows.
+ */
+@Composable
+fun SizedBlock(size: com.eoinknd16.nexus.look.BlockSize?, content: @Composable () -> Unit) {
+    if (size == null || (size.widthPct >= 99.5f && kotlin.math.abs(size.scale - 1f) < 0.01f)) {
+        content()
+        return
+    }
+    val pct = size.widthPct.coerceIn(20f, 100f) / 100f
+    val scale = size.scale.coerceIn(0.4f, 2f)
+    androidx.compose.ui.layout.Layout(content = content, modifier = Modifier.fillMaxWidth()) { measurables, constraints ->
+        val full = constraints.maxWidth
+        val target = (full * pct).toInt()
+        val inner = (target / scale).toInt().coerceAtLeast(1)
+        val p = measurables.first().measure(androidx.compose.ui.unit.Constraints(minWidth = 0, maxWidth = inner, minHeight = 0, maxHeight = androidx.compose.ui.unit.Constraints.Infinity))
+        val w = (p.width * scale).toInt()
+        val h = (p.height * scale).toInt()
+        val x = when (size.align) {
+            com.eoinknd16.nexus.look.Align.Start -> 0
+            com.eoinknd16.nexus.look.Align.Center -> (full - w) / 2
+            com.eoinknd16.nexus.look.Align.End -> full - w
+        }
+        layout(full, h) {
+            p.placeWithLayer(x, 0) {
+                scaleX = scale
+                scaleY = scale
+                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
+            }
         }
     }
 }
