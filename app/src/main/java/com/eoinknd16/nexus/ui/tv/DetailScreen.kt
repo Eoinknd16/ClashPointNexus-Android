@@ -26,7 +26,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Cast
@@ -70,7 +69,9 @@ import com.eoinknd16.nexus.ui.fx.NexusButton
 import com.eoinknd16.nexus.ui.fx.holoPanel
 import com.eoinknd16.nexus.ui.fx.nexusPress
 import com.eoinknd16.nexus.ui.nexusViewModel
+import com.eoinknd16.nexus.ui.fx.nexusShape
 import com.eoinknd16.nexus.ui.theme.Nx
+import com.eoinknd16.nexus.ui.theme.hud
 
 @Composable
 fun DetailScreen(type: CatalogType, id: String) {
@@ -107,21 +108,27 @@ fun DetailScreen(type: CatalogType, id: String) {
                 state.loading -> LoadingBlock("Pulling metadata…")
                 meta == null -> EmptyBlock(state.error ?: "Not found", null) { NexusButton("Retry") { vm.load() } }
                 else -> LazyColumn(contentPadding = PaddingValues(bottom = 32.dp)) {
+                    // Anything with an episode list behaves like a series (anime, channels...), whatever its type.
+                    val episodic = meta.episodes.isNotEmpty()
+                    val autoPlay = com.eoinknd16.nexus.look.LookState.look.tv.autoPlayTopSource
                     item { Header(meta, progress) }
                     item {
                         Actions(
-                            isSeries = type == CatalogType.series,
-                            resumeLabel = resumeLabel(type, progress, vm.nextEpisode()),
+                            isSeries = episodic,
+                            resumeLabel = resumeLabel(episodic, progress, vm.nextEpisode()),
                             inLibrary = inLibrary,
-                            pcPaired = pcPaired,
+                            pcPaired = pcPaired && (type == CatalogType.movie || type == CatalogType.series),
                             busy = state.busy,
-                            onPlay = { vm.play(if (type == CatalogType.series) vm.nextEpisode() else null, startPlayer) },
-                            onSources = { vm.openSources(if (type == CatalogType.series) vm.nextEpisode() else null) },
+                            onPlay = {
+                                val ep = if (episodic) vm.nextEpisode() else null
+                                if (autoPlay) vm.play(ep, startPlayer) else vm.openSources(ep)
+                            },
+                            onSources = { vm.openSources(if (episodic) vm.nextEpisode() else null) },
                             onLibrary = vm::toggleLibrary,
-                            onCast = { vm.sendToTv(if (type == CatalogType.series) vm.nextEpisode() else null) },
+                            onCast = { vm.sendToTv(if (episodic) vm.nextEpisode() else null) },
                         )
                     }
-                    if (type == CatalogType.series && meta.episodes.isNotEmpty()) {
+                    if (episodic) {
                         val seasons = meta.episodes.map { it.season }.distinct().sortedBy { com.eoinknd16.nexus.media.seasonSortKey(it) }
                         item {
                             Column {
@@ -138,7 +145,7 @@ fun DetailScreen(type: CatalogType, id: String) {
                             EpisodeRow(
                                 ep = ep,
                                 progress = progress?.takeIf { it.episodeId == ep.id },
-                                onPlay = { vm.play(ep, startPlayer) },
+                                onPlay = { if (autoPlay) vm.play(ep, startPlayer) else vm.openSources(ep) },
                                 onSources = { vm.openSources(ep) },
                             )
                         }
@@ -155,7 +162,7 @@ fun DetailScreen(type: CatalogType, id: String) {
             modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(16.dp),
         ) {
             Text(
-                (state.message ?: "").uppercase(),
+                hud(state.message ?: ""),
                 style = MaterialTheme.typography.labelMedium, color = Nx.Text,
                 modifier = Modifier.holoPanel().padding(horizontal = 16.dp, vertical = 12.dp),
             )
@@ -173,8 +180,8 @@ fun DetailScreen(type: CatalogType, id: String) {
     }
 }
 
-private fun resumeLabel(type: CatalogType, p: WatchProgress?, next: Episode?): String = when {
-    type == CatalogType.movie -> if (p?.isResumable == true) "Resume" else "Play"
+private fun resumeLabel(episodic: Boolean, p: WatchProgress?, next: Episode?): String = when {
+    !episodic -> if (p?.isResumable == true) "Resume" else "Play"
     next == null -> "Play"
     p?.episodeId == next.id && p.isResumable -> "Resume S${next.season}E${next.episode}"
     else -> "Play S${next.season}E${next.episode}"
@@ -198,7 +205,7 @@ private fun Header(meta: com.eoinknd16.nexus.media.MetaDetail, progress: WatchPr
                     meta.item.year,
                     meta.runtime,
                     meta.item.imdbRating?.let { "IMDb $it" },
-                ).forEach { Text(it.uppercase(), style = MaterialTheme.typography.labelSmall, color = Nx.Cyan) }
+                ).forEach { Text(hud(it), style = MaterialTheme.typography.labelSmall, color = Nx.Cyan) }
             }
             Spacer(Modifier.height(6.dp))
             if (meta.item.genres.isNotEmpty()) {
@@ -208,7 +215,7 @@ private fun Header(meta: com.eoinknd16.nexus.media.MetaDetail, progress: WatchPr
                 Spacer(Modifier.height(6.dp))
                 Text("DIR · ${meta.director.joinToString(", ")}", style = MaterialTheme.typography.labelSmall, color = Nx.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            if (progress?.isResumable == true && meta.item.type == CatalogType.movie) {
+            if (progress?.isResumable == true && meta.episodes.isEmpty()) {
                 Spacer(Modifier.height(10.dp))
                 GlowProgress(progress.fraction, Modifier.fillMaxWidth())
             }
@@ -254,9 +261,9 @@ private fun Actions(
 
 @Composable
 private fun SeasonChip(label: String, selected: Boolean, onClick: () -> Unit) {
-    val shape = CutCornerShape(topStart = 6.dp, bottomEnd = 6.dp)
+    val shape = nexusShape(0.43f)
     Text(
-        label.uppercase(), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold,
+        hud(label), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold,
         color = if (selected) Nx.Void else Nx.Cyan,
         modifier = Modifier.nexusPress(onClick).clip(shape)
             .background(if (selected) Nx.Cyan else Nx.Cyan.copy(alpha = 0.08f))
@@ -271,7 +278,7 @@ private fun EpisodeRow(ep: Episode, progress: WatchProgress?, onPlay: () -> Unit
             .nexusPress(onPlay, onLongClick = onSources).holoPanel(glow = 0.05f).padding(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.width(128.dp).aspectRatio(16f / 9f).clip(CutCornerShape(6.dp)).background(Nx.Deep)) {
+        Box(Modifier.width(128.dp).aspectRatio(16f / 9f).clip(nexusShape(0.43f)).background(Nx.Deep)) {
             AsyncImage(ep.thumbnail, null, contentScale = ContentScale.Crop, modifier = Modifier.matchParentSize())
             if (progress != null) GlowProgress(progress.fraction, Modifier.fillMaxWidth().align(Alignment.BottomCenter))
         }
@@ -330,10 +337,25 @@ private fun SourcesBottomSheet(
 
 @Composable
 private fun StreamRow(s: StreamOption, pcPaired: Boolean, onPlay: () -> Unit, onCast: () -> Unit) {
-    val playable = s.playableUrl != null
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val external = s.source as? StreamSource.External
+    val playable = s.playableUrl != null || external != null
     Row(
         Modifier.fillMaxWidth()
-            .then(if (playable) Modifier.nexusPress(onPlay) else Modifier)
+            .then(
+                when {
+                    external != null -> Modifier.nexusPress({
+                        runCatching {
+                            context.startActivity(
+                                android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(external.url))
+                                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                            )
+                        }
+                    })
+                    playable -> Modifier.nexusPress(onPlay)
+                    else -> Modifier
+                },
+            )
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -341,7 +363,11 @@ private fun StreamRow(s: StreamOption, pcPaired: Boolean, onPlay: () -> Unit, on
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 s.resolution?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = Nx.Void, modifier = Modifier.background(Nx.Cyan).padding(horizontal = 6.dp, vertical = 2.dp)) }
                 Text(
-                    (if (s.source is StreamSource.Torrent) "P2P via PC · " else "Direct · ") + s.addonName,
+                    when (s.source) {
+                        is StreamSource.Torrent -> "P2P via PC · "
+                        is StreamSource.External -> "Opens outside Nexus · "
+                        is StreamSource.Direct -> "Direct · "
+                    } + s.addonName,
                     style = MaterialTheme.typography.labelSmall, color = if (playable) Nx.Cyan else Nx.Muted,
                 )
             }
@@ -349,7 +375,7 @@ private fun StreamRow(s: StreamOption, pcPaired: Boolean, onPlay: () -> Unit, on
             Text(s.title, style = MaterialTheme.typography.bodyMedium, color = if (playable) Nx.Text else Nx.Muted, maxLines = 3, overflow = TextOverflow.Ellipsis)
             if (s.languages.isNotEmpty()) Text(s.languages.joinToString(" · "), style = MaterialTheme.typography.labelSmall, color = Nx.Muted)
         }
-        if (pcPaired) {
+        if (pcPaired && external == null) {
             Spacer(Modifier.width(8.dp))
             Box(Modifier.size(40.dp).nexusPress(onCast), contentAlignment = Alignment.Center) {
                 Icon(Icons.Filled.Cast, "Play on TV", tint = Nx.Magenta)

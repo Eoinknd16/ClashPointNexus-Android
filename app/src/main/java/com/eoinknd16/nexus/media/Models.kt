@@ -5,8 +5,32 @@ import kotlinx.serialization.Serializable
 /** Same shapes as the PC build's src/shared/stremioTypes.ts, so both apps
  * (and the phone -> PC link) speak the same vocabulary. */
 
+/**
+ * A Stremio content type. Usually "movie" or "series", but addons can declare
+ * any type ("anime", "channel", "tv", ...) and Stremio shows those as their
+ * own sections -- so this is an open string, not an enum. Serialized as the
+ * bare string, so data saved by earlier builds (when it was an enum) still loads.
+ */
 @Serializable
-enum class CatalogType { movie, series }
+@JvmInline
+value class CatalogType(val name: String) {
+    override fun toString(): String = name
+
+    /** Human label for tabs/headings: "movie" -> "Movies", "anime" -> "Anime". */
+    val label: String
+        get() = when (name) {
+            "movie" -> "Movies"
+            "series" -> "Series"
+            "tv" -> "TV channels"
+            "channel" -> "Channels"
+            else -> name.replaceFirstChar { it.uppercase() }
+        }
+
+    companion object {
+        val movie = CatalogType("movie")
+        val series = CatalogType("series")
+    }
+}
 
 @Serializable
 data class CatalogItem(
@@ -22,7 +46,19 @@ data class CatalogItem(
 )
 
 @Serializable
-data class AddonCatalogRef(val type: CatalogType, val id: String, val name: String)
+data class AddonCatalogRef(
+    val type: CatalogType,
+    val id: String,
+    val name: String,
+    /** Needs an extra (e.g. search-only, or a required genre) so it can't be a plain board row. */
+    val requiresExtra: Boolean = false,
+    /** Declares the "search" extra -- queried by global search, like Stremio does. */
+    val searchable: Boolean = false,
+)
+
+/** A manifest resource can narrow which types / id prefixes it answers for. */
+@Serializable
+data class ResourceRule(val name: String, val types: List<String>? = null, val idPrefixes: List<String>? = null)
 
 @Serializable
 data class Addon(
@@ -31,7 +67,29 @@ data class Addon(
     val resources: List<String>,
     val catalogs: List<AddonCatalogRef> = emptyList(),
     val logo: String? = null,
-)
+    /** Manifest-level types / idPrefixes (null = not declared = anything). */
+    val types: List<String>? = null,
+    val idPrefixes: List<String>? = null,
+    val rules: List<ResourceRule> = emptyList(),
+    /** Came from a Stremio account import (vs added by hand on the phone). */
+    val fromStremio: Boolean = false,
+) {
+    /**
+     * Same routing the Stremio app does: only ask an addon for a resource if
+     * it declares that resource for this type and id prefix. Stops e.g. an
+     * IMDb-only stream addon being queried for a kitsu: anime id (wasted
+     * request + a confusing "failed" line in the sources list).
+     */
+    fun supports(resource: String, type: CatalogType, id: String): Boolean {
+        if (resource !in resources) return false
+        val rule = rules.firstOrNull { it.name == resource }
+        val t = rule?.types ?: types
+        val p = rule?.idPrefixes ?: idPrefixes
+        if (t != null && t.isNotEmpty() && type.name !in t) return false
+        if (p != null && p.isNotEmpty() && p.none { id.startsWith(it) }) return false
+        return true
+    }
+}
 
 data class CatalogRow(val key: String, val label: String, val items: List<CatalogItem>)
 
@@ -58,8 +116,15 @@ data class MetaDetail(
 /** Where a stream actually comes from -- decides whether the phone can play
  * it on its own, or needs the living-room PC's torrent server. */
 sealed interface StreamSource {
-    data class Direct(val url: String) : StreamSource
-    data class Torrent(val infoHash: String, val fileIdx: Int) : StreamSource
+    /** Plain HTTP(S) URL. [headers] = behaviorHints.proxyHeaders.request, which
+     * some debrid/CDN addons need sent with every request or the host rejects it. */
+    data class Direct(val url: String, val headers: Map<String, String> = emptyMap()) : StreamSource
+
+    /** [fileIdx] null = the addon didn't say which file; the torrent server picks the largest video. */
+    data class Torrent(val infoHash: String, val fileIdx: Int?) : StreamSource
+
+    /** Opens outside Nexus (externalUrl, YouTube ytId). */
+    data class External(val url: String) : StreamSource
 }
 
 data class StreamOption(

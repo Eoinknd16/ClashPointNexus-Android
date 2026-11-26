@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -51,6 +50,7 @@ import com.eoinknd16.nexus.ui.Routes
 import com.eoinknd16.nexus.ui.ScreenHeader
 import com.eoinknd16.nexus.ui.fx.NexusBackdrop
 import com.eoinknd16.nexus.ui.nexusViewModel
+import com.eoinknd16.nexus.ui.fx.nexusShape
 import com.eoinknd16.nexus.ui.theme.Nx
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -92,7 +92,7 @@ fun SearchScreen() {
     NexusBackdrop(intensity = 0.5f) {
         Column(Modifier.fillMaxSize().navigationBarsPadding().imePadding()) {
             ScreenHeader("Search", "Movies & series")
-            val shape = CutCornerShape(topStart = 10.dp, bottomEnd = 10.dp)
+            val shape = nexusShape(0.71f)
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).clip(shape)
                     .background(Nx.Panel).border(1.dp, Nx.CyanDim, shape).padding(horizontal = 14.dp, vertical = 12.dp),

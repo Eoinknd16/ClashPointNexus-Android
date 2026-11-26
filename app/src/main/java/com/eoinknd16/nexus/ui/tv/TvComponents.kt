@@ -32,17 +32,19 @@ import com.eoinknd16.nexus.ui.fx.GlowProgress
 import com.eoinknd16.nexus.ui.fx.HudLabel
 import com.eoinknd16.nexus.ui.fx.nexusPress
 import com.eoinknd16.nexus.ui.theme.Nx
+import com.eoinknd16.nexus.look.LookState
 
-val PosterShape = CutCornerShape(topStart = 10.dp, bottomEnd = 10.dp)
+val PosterShape: androidx.compose.ui.graphics.Shape get() = com.eoinknd16.nexus.ui.fx.nexusShape(0.7f)
 
 @Composable
 fun PosterCard(
     item: CatalogItem,
     modifier: Modifier = Modifier,
-    width: Dp = 112.dp,
+    width: Dp = LookState.look.tv.posterWidthDp.dp,
     progress: Float? = null,
     onClick: () -> Unit,
 ) {
+    val tv = LookState.look.tv
     Column(modifier.width(width).nexusPress(onClick)) {
         Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(PosterShape).background(Nx.Deep)) {
             AsyncImage(
@@ -61,7 +63,7 @@ fun PosterCard(
                     Brush.verticalGradient(0.7f to Color.Transparent, 1f to Color(0xAA05070D)),
                 ),
             )
-            item.imdbRating?.let {
+            item.imdbRating?.takeIf { tv.showRatings }?.let {
                 Text(
                     "★ $it", style = MaterialTheme.typography.labelSmall, color = Nx.Amber,
                     modifier = Modifier.align(Alignment.BottomStart).padding(6.dp),
@@ -69,9 +71,11 @@ fun PosterCard(
             }
         }
         if (progress != null) GlowProgress(progress, Modifier.fillMaxWidth().padding(top = 4.dp))
-        Spacer(Modifier.height(6.dp))
-        Text(item.name, style = MaterialTheme.typography.bodyMedium, color = Nx.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        item.year?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = Nx.Muted, maxLines = 1) }
+        if (tv.showTitles) {
+            Spacer(Modifier.height(6.dp))
+            Text(item.name, style = MaterialTheme.typography.bodyMedium, color = Nx.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        if (tv.showYear) item.year?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = Nx.Muted, maxLines = 1) }
     }
 }
 
@@ -80,10 +84,14 @@ fun PosterRow(
     label: String,
     items: List<CatalogItem>,
     progressFor: (CatalogItem) -> Float? = { null },
+    headerActions: (@Composable () -> Unit)? = null,
     onItem: (CatalogItem) -> Unit,
 ) {
     Column(Modifier.fillMaxWidth()) {
-        HudLabel(label, Modifier.padding(horizontal = 16.dp))
+        androidx.compose.foundation.layout.Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+            HudLabel(label, Modifier.weight(1f))
+            headerActions?.invoke()
+        }
         Spacer(Modifier.height(10.dp))
         LazyRow(
             contentPadding = PaddingValues(horizontal = 16.dp),

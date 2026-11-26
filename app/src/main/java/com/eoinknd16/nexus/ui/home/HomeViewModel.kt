@@ -4,7 +4,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavController
 import com.eoinknd16.nexus.AppContainer
-import com.eoinknd16.nexus.launcher.LaunchableApp
 import com.eoinknd16.nexus.link.WakeOnLan
 import com.eoinknd16.nexus.media.WatchProgress
 import com.eoinknd16.nexus.ui.Routes
@@ -13,7 +12,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -38,15 +36,24 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
         .map { c.media.continueWatching(it) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    val dock: StateFlow<List<LaunchableApp>> = combine(c.apps.apps, c.apps.prefs.state) { apps, prefs ->
-        val byKey = apps.associateBy { it.key }
-        prefs.pinned.mapNotNull { byKey[it] }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val library = c.media.library
+    val weather = c.weather.now
+    private val _weatherError = MutableStateFlow<String?>(null)
+    val weatherError: StateFlow<String?> = _weatherError
+
+    fun refreshWeather(force: Boolean = false) {
+        viewModelScope.launch {
+            val prefs = c.lookStore.get().weather
+            if (!prefs.enabled) return@launch
+            c.weather.refresh(prefs, force).onFailure { _weatherError.value = it.message }.onSuccess { _weatherError.value = null }
+        }
+    }
 
     private var pollJob: Job? = null
 
     fun startPolling() {
         pollJob?.cancel()
+        refreshWeather()
         pollJob = viewModelScope.launch {
             while (isActive) {
                 refreshPc()
@@ -101,8 +108,6 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
             _state.update { it.copy(wakeMessage = null) }
         }
     }
-
-    fun launch(app: LaunchableApp) = c.apps.launch(app)
 
     fun openContinue(p: WatchProgress, nav: NavController) {
         nav.navigate(Routes.detail(p.type.name, p.id))

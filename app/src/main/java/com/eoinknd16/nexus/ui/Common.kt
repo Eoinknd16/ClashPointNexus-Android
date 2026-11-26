@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.CircularProgressIndicator
@@ -36,7 +35,9 @@ import androidx.navigation.NavHostController
 import com.eoinknd16.nexus.AppContainer
 import com.eoinknd16.nexus.NexusApp
 import com.eoinknd16.nexus.ui.fx.nexusPress
+import com.eoinknd16.nexus.ui.fx.nexusShape
 import com.eoinknd16.nexus.ui.theme.Nx
+import com.eoinknd16.nexus.ui.theme.hud
 
 val LocalNav = staticCompositionLocalOf<NavHostController> { error("No NavController") }
 
@@ -59,6 +60,7 @@ object Routes {
     const val PC = "pc"
     const val SETTINGS = "settings"
     const val ADDONS = "addons"
+    const val CUSTOMIZE = "customize"
 
     fun detail(type: String, id: String) = "detail/$type/${android.net.Uri.encode(id)}"
 }
@@ -72,13 +74,13 @@ fun ScreenHeader(title: String, subtitle: String? = null, actions: @Composable (
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
-            Modifier.size(40.dp).nexusPress({ nav.popBackStack() }).clip(CutCornerShape(8.dp)).background(Nx.Cyan.copy(alpha = 0.08f)),
+            Modifier.size(40.dp).nexusPress({ nav.popBackStack() }).clip(nexusShape(0.57f)).background(Nx.Cyan.copy(alpha = 0.08f)),
             contentAlignment = Alignment.Center,
         ) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = Nx.Cyan) }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.headlineSmall, color = Nx.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (subtitle != null) Text(subtitle.uppercase(), style = MaterialTheme.typography.labelSmall, color = Nx.Muted, maxLines = 1)
+            if (subtitle != null) Text(hud(subtitle), style = MaterialTheme.typography.labelSmall, color = Nx.Muted, maxLines = 1)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { actions() }
     }
@@ -89,7 +91,7 @@ fun LoadingBlock(text: String = "Linking…") {
     Column(Modifier.fillMaxWidth().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         CircularProgressIndicator(color = Nx.Cyan, strokeWidth = 2.dp, modifier = Modifier.size(28.dp))
         Spacer(Modifier.size(12.dp))
-        Text(text.uppercase(), style = MaterialTheme.typography.labelSmall, color = Nx.Muted)
+        Text(hud(text), style = MaterialTheme.typography.labelSmall, color = Nx.Muted)
     }
 }
 

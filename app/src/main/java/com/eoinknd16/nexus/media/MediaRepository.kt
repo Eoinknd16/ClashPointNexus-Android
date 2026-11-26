@@ -15,27 +15,31 @@ import kotlinx.serialization.builtins.serializer
 
 /**
  * Phone-side equivalent of the PC's src/main/stremio/service.ts +
- * subtitles/progress/library. Same rules as the PC: your own addons decide
- * what can be streamed (Cinemeta is only the built-in catalog/metadata
- * source), addon order is kept as-is, and a failing addon only drops its
- * own results instead of failing the whole request.
+ * subtitles/progress/library, extended to behave like the Stremio app itself
+ * once an account is imported: your addons (in your order) decide the board,
+ * metadata, streams and subtitles, each addon is only asked for the types/ids
+ * it declares, and a failing addon only drops its own results.
  */
 class MediaRepository(
     private val addonStore: JsonStore<List<Addon>>,
     private val progressStore: JsonStore<Map<String, WatchProgress>>,
     private val libraryStore: JsonStore<List<CatalogItem>>,
+    val accountStore: JsonStore<StremioAccountState>,
     private val pcStore: JsonStore<PcLinkConfig>,
     private val pc: PcLinkClient,
 ) {
     val addons = addonStore.state
     val progress = progressStore.state
     val library = libraryStore.state
+    val account = accountStore.state
 
-    // ---- Catalog rows -------------------------------------------------------
-
-    private val cinemetaCache = HashMap<String, List<CatalogItem>>()
     private val cacheLock = Mutex()
 
+    // ---- Board ----------------------------------------------------------------
+
+    private val cinemetaCache = HashMap<String, List<CatalogItem>>()
+
+    /** Built-in Cinemeta rows (used when your addons don't already include Cinemeta). */
     suspend fun cinemetaRow(type: CatalogType, catalogId: String, genre: String? = null): List<CatalogItem> {
         val key = "$type:$catalogId:$genre"
         cacheLock.withLock { cinemetaCache[key] }?.let { return it }
@@ -45,59 +49,85 @@ class MediaRepository(
         return items
     }
 
-    /** One row per movie/series catalog your own catalog addons declare. */
+    /** True when one of your addons is Cinemeta itself (always the case after a Stremio import). */
+    suspend fun hasCinemetaAddon(): Boolean = addonStore.get().any { it.url.startsWith(StremioProtocol.CINEMETA) }
+
+    /** Content types your addons have board catalogs for, movie/series first -- Stremio's Discover sections. */
+    suspend fun boardTypes(): List<CatalogType> {
+        val declared = addonStore.get().flatMap { a ->
+            if ("catalog" in a.resources) a.catalogs.filter { !it.requiresExtra }.map { it.type } else emptyList()
+        }
+        return (listOf(CatalogType.movie, CatalogType.series) + declared).distinct()
+    }
+
+    /** One row per board catalog your addons declare for this type, in addon order (= Stremio's board order). */
     suspend fun addonRows(type: CatalogType): List<CatalogRow> = coroutineScope {
         addonStore.get()
             .filter { "catalog" in it.resources }
-            .flatMap { addon -> addon.catalogs.filter { it.type == type }.map { addon to it } }
+            .flatMap { addon -> addon.catalogs.filter { it.type == type && !it.requiresExtra }.map { addon to it } }
             .map { (addon, cat) ->
                 async {
                     runCatching { StremioProtocol.catalog(addon.url, type, cat.id) }.getOrNull()
                         ?.takeIf { it.isNotEmpty() }
-                        ?.let { CatalogRow("addon:${addon.url}:${cat.id}", "${addon.name} · ${cat.name}", it) }
+                        ?.let { CatalogRow("addon:${addon.url}:${cat.type}:${cat.id}", rowLabel(addon, cat), it) }
                 }
             }
             .awaitAll()
             .filterNotNull()
     }
 
+    /** Stremio shows "Popular - Movie" style names; Cinemeta's own rows get no addon prefix. */
+    private fun rowLabel(addon: Addon, cat: AddonCatalogRef): String =
+        if (addon.url.startsWith(StremioProtocol.CINEMETA)) cat.name else "${cat.name} · ${addon.name}"
+
+    /** Searches every catalog that supports search (your addons, like Stremio), else Cinemeta. */
     suspend fun search(query: String): List<CatalogItem> = coroutineScope {
         val q = query.trim()
         if (q.isEmpty()) return@coroutineScope emptyList()
-        listOf(CatalogType.movie, CatalogType.series)
-            .map { type -> async { runCatching { StremioProtocol.catalog(StremioProtocol.CINEMETA, type, "top", search = q) }.getOrDefault(emptyList()) } }
-            .awaitAll()
-            .flatten()
-            .distinctBy { "${it.type}:${it.id}" }
+        val searchable = addonStore.get().flatMap { a ->
+            if ("catalog" in a.resources) a.catalogs.filter { it.searchable }.map { a to it } else emptyList()
+        }
+        val tasks = if (searchable.isNotEmpty()) {
+            searchable.map { (a, c) -> async { runCatching { StremioProtocol.catalog(a.url, c.type, c.id, search = q) }.getOrDefault(emptyList()) } }
+        } else {
+            listOf(CatalogType.movie, CatalogType.series).map { type ->
+                async { runCatching { StremioProtocol.catalog(StremioProtocol.CINEMETA, type, "top", search = q) }.getOrDefault(emptyList()) }
+            }
+        }
+        tasks.awaitAll().flatten().distinctBy { "${it.type}:${it.id}" }
     }
 
-    // ---- Meta ---------------------------------------------------------------
+    // ---- Meta -----------------------------------------------------------------
 
     private val metaCache = HashMap<String, MetaDetail>()
 
     suspend fun meta(type: CatalogType, id: String): MetaDetail? {
         val key = "$type:$id"
         cacheLock.withLock { metaCache[key] }?.let { return it }
-        // Cinemeta first (authoritative, same as the PC); fall back to any of
-        // your meta addons for ids Cinemeta doesn't know (addon-only catalogs).
-        val fromCinemeta = runCatching { StremioProtocol.meta(type, id) }.getOrNull()
-        val detail = fromCinemeta ?: addonStore.get()
-            .filter { "meta" in it.resources }
-            .firstNotNullOfOrNull { runCatching { StremioProtocol.meta(type, id, it.url) }.getOrNull() }
+        // Your meta addons that claim this type/id, in your order (Stremio's
+        // rule); Cinemeta as the fallback if none of them answer.
+        val sources = addonStore.get().filter { it.supports("meta", type, id) }.map { it.url } +
+            StremioProtocol.CINEMETA
+        val detail = sources.distinct().firstNotNullOfOrNull { url ->
+            runCatching { StremioProtocol.meta(type, id, url) }.getOrNull()
+        }
         if (detail != null) cacheLock.withLock { metaCache[key] = detail }
         return detail
     }
 
-    // ---- Streams ------------------------------------------------------------
+    // ---- Streams --------------------------------------------------------------
 
     /**
-     * Direct-URL streams play on the phone as-is. Torrent (infoHash) streams
-     * go through the living-room PC: Nexus there starts its Stremio torrent
-     * engine and proxies it to the phone -- same engine the PC itself uses.
+     * Direct-URL streams play on the phone as-is (with any headers the addon
+     * asks for). Torrent (infoHash) streams go through the living-room PC:
+     * Nexus there runs its Stremio torrent engine and proxies it to the phone.
      */
     suspend fun streams(type: CatalogType, id: String): StreamResult = coroutineScope {
-        val streamAddons = addonStore.get().filter { "stream" in it.resources }
-        if (streamAddons.isEmpty()) return@coroutineScope StreamResult(emptyList(), false, emptyList(), null)
+        val all = addonStore.get()
+        val streamAddons = all.filter { it.supports("stream", type, id) }
+        if (streamAddons.isEmpty()) {
+            return@coroutineScope StreamResult(emptyList(), all.any { "stream" in it.resources }, emptyList(), null)
+        }
 
         val pcConfig = pcStore.get()
         val torrentCheck = async {
@@ -122,14 +152,16 @@ class MediaRepository(
             result.onFailure { errors += "${addon.name}: ${it.describe()}" }
             for (raw in result.getOrDefault(emptyList())) {
                 val source = when {
-                    raw.url != null -> StreamSource.Direct(raw.url)
-                    raw.infoHash != null -> StreamSource.Torrent(raw.infoHash, raw.fileIdx ?: 0)
-                    else -> continue // YouTube/external-only streams: nothing playable here
+                    raw.url != null -> StreamSource.Direct(raw.url, raw.headers)
+                    raw.infoHash != null -> StreamSource.Torrent(raw.infoHash.lowercase(), raw.fileIdx)
+                    raw.externalUrl != null -> StreamSource.External(raw.externalUrl)
+                    else -> continue
                 }
                 val playable = when (source) {
                     is StreamSource.Direct -> source.url
                     is StreamSource.Torrent ->
                         if (torrentBlocked == null) pc.torrentStreamUrl(pcConfig, source.infoHash, source.fileIdx) else null
+                    is StreamSource.External -> null
                 }
                 streams += StreamOption(
                     title = raw.title,
@@ -145,16 +177,17 @@ class MediaRepository(
         StreamResult(streams, true, errors, if (anyTorrent) torrentBlocked else null)
     }
 
-    /** OpenSubtitles always, plus every installed subtitles addon -- same as the PC. */
+    /** Your subtitle addons (that claim this id) + OpenSubtitles unless you already have it installed. */
     suspend fun subtitles(type: CatalogType, id: String): List<SubtitleTrack> = coroutineScope {
-        val sources = listOf("OpenSubtitles" to StremioProtocol.OPENSUBTITLES) +
-            addonStore.get().filter { "subtitles" in it.resources }.map { it.name to it.url }
+        val mine = addonStore.get().filter { it.supports("subtitles", type, id) }.map { it.name to it.url }
+        val sources = if (mine.any { it.second.startsWith(StremioProtocol.OPENSUBTITLES) }) mine
+        else listOf("OpenSubtitles" to StremioProtocol.OPENSUBTITLES) + mine
         sources.map { (label, url) ->
             async { runCatching { StremioProtocol.subtitles(url, label, type, id) }.getOrDefault(emptyList()) }
-        }.awaitAll().flatten()
+        }.awaitAll().flatten().distinctBy { it.url }
     }
 
-    // ---- Addons -------------------------------------------------------------
+    // ---- Addons ---------------------------------------------------------------
 
     private var communityCache: List<CommunityAddon>? = null
 
@@ -164,10 +197,14 @@ class MediaRepository(
     suspend fun installAddon(url: String): Addon {
         val addon = StremioProtocol.manifest(url)
         addonStore.update { list -> list.filterNot { it.url == addon.url } + addon }
+        clearCaches()
         return addon
     }
 
-    suspend fun removeAddon(url: String) = addonStore.update { list -> list.filterNot { it.url == url } }
+    suspend fun removeAddon(url: String) {
+        addonStore.update { list -> list.filterNot { it.url == url } }
+        clearCaches()
+    }
 
     suspend fun moveAddon(url: String, up: Boolean) = addonStore.update { list ->
         val i = list.indexOfFirst { it.url == url }
@@ -175,15 +212,67 @@ class MediaRepository(
         if (i < 0 || j !in list.indices) list else list.toMutableList().apply { add(j, removeAt(i)) }
     }
 
-    /** Copies the PC's addon list (Settings > Plugins > TV Addons there). Keeps
-     * any phone-only addons, PC ones first in the PC's order. */
+    /** Copies the PC's addon list. Keeps phone-only addons, PC ones first in the PC's order. */
     suspend fun importAddonsFromPc(): Int {
         val fromPc = pc.addons().map { it.copy(url = StremioProtocol.normalizeUrl(it.url)) }
         addonStore.update { mine -> fromPc + mine.filterNot { m -> fromPc.any { it.url == m.url } } }
+        clearCaches()
         return fromPc.size
     }
 
-    // ---- Progress + library -------------------------------------------------
+    private suspend fun clearCaches() = cacheLock.withLock { metaCache.clear() }
+
+    // ---- Stremio account --------------------------------------------------------
+
+    suspend fun stremioLogin(email: String, password: String): StremioImportResult {
+        val authKey = StremioAccount.login(email, password)
+        accountStore.set(StremioAccountState(authKey = authKey, email = email.trim()))
+        return stremioSync()
+    }
+
+    /** For people who'd rather not type their password: the auth key from a
+     * logged-in Stremio Web session (localStorage "profile" -> auth.key). */
+    suspend fun stremioLinkWithKey(authKey: String): StremioImportResult {
+        accountStore.set(StremioAccountState(authKey = authKey.trim().trim('"')))
+        return stremioSync()
+    }
+
+    /**
+     * Mirrors the account: addons replaced with the account's collection (in
+     * its order -- addons you added only on the phone are kept, after them),
+     * library merged in, and watch progress taken from Stremio wherever it's
+     * newer than what the phone has.
+     */
+    suspend fun stremioSync(): StremioImportResult {
+        val state = accountStore.get()
+        require(state.isLinked) { "Not linked to a Stremio account" }
+        val (addons, skipped) = StremioAccount.addons(state.authKey)
+        addonStore.update { mine ->
+            addons + mine.filter { m -> !m.fromStremio && addons.none { it.url == m.url } }
+        }
+
+        val library = StremioAccount.library(state.authKey)
+        val saved = library.filter { it.inLibrary }.map { it.item }
+        libraryStore.update { mine -> (saved + mine).distinctBy { "${it.type}:${it.id}" } }
+
+        val incoming = library.mapNotNull { it.progress }
+        progressStore.update { mine ->
+            val merged = mine.toMutableMap()
+            for (p in incoming) {
+                val k = key(p.type, p.id)
+                val existing = merged[k]
+                if (existing == null || p.updatedAt > existing.updatedAt) merged[k] = p
+            }
+            merged
+        }
+        accountStore.update { it.copy(lastSyncAt = System.currentTimeMillis()) }
+        clearCaches()
+        return StremioImportResult(addons.size, skipped, saved.size, incoming.count { it.isResumable || it.episodeId != null })
+    }
+
+    suspend fun stremioUnlink() = accountStore.set(StremioAccountState())
+
+    // ---- Progress + library -----------------------------------------------------
 
     private fun key(type: CatalogType, id: String) = "${type.name}:$id"
 
@@ -194,7 +283,7 @@ class MediaRepository(
     suspend fun clearProgress(type: CatalogType, id: String) = progressStore.update { it - key(type, id) }
 
     fun continueWatching(all: Map<String, WatchProgress>): List<WatchProgress> =
-        all.values.filter { it.isResumable || it.type == CatalogType.series }.sortedByDescending { it.updatedAt }.take(25)
+        all.values.filter { it.isResumable || it.episodeId != null }.sortedByDescending { it.updatedAt }.take(25)
 
     fun isInLibrary(item: CatalogItem): Boolean = libraryStore.value.any { it.id == item.id && it.type == item.type }
 

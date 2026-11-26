@@ -58,7 +58,15 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
+import androidx.media3.ui.CaptionStyleCompat
+import androidx.media3.ui.SubtitleView
+import androidx.compose.ui.graphics.toArgb
+import com.eoinknd16.nexus.look.LookState
+import com.eoinknd16.nexus.look.ResizeMode
+import com.eoinknd16.nexus.look.SubtitleEdge
+import com.eoinknd16.nexus.look.parseColor
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
@@ -77,6 +85,7 @@ import com.eoinknd16.nexus.ui.fx.HudLabel
 import com.eoinknd16.nexus.ui.fx.holoPanel
 import com.eoinknd16.nexus.ui.fx.nexusPress
 import com.eoinknd16.nexus.ui.theme.Nx
+import com.eoinknd16.nexus.ui.theme.hud
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -105,15 +114,27 @@ fun PlayerScreen() {
     var activeSubtitle by remember { mutableStateOf<SubtitleTrack?>(null) }
     val failedIndexes = remember { mutableSetOf<Int>() }
 
+    val prefs = LookState.look.player
+    // Headers the current stream's addon asked for (behaviorHints.proxyHeaders).
+    // Read per request by the resolving data source below, so switching to a
+    // source with different headers needs no new player.
+    val streamHeaders = remember { java.util.concurrent.atomic.AtomicReference<Map<String, String>>(emptyMap()) }
     val player = remember {
-        val dataSource = OkHttpDataSource.Factory(Http.client).setUserAgent(Http.ADDON_HEADERS.getValue("User-Agent"))
+        val okFactory = OkHttpDataSource.Factory(Http.client).setUserAgent(Http.ADDON_HEADERS.getValue("User-Agent"))
+        val dataSource = ResolvingDataSource.Factory(okFactory) { spec ->
+            val h = streamHeaders.get()
+            if (h.isEmpty()) spec else spec.withAdditionalHeaders(h)
+        }
         ExoPlayer.Builder(context)
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSource))
             .setHandleAudioBecomingNoisy(true)
+            .setSeekBackIncrementMs(prefs.seekBackSeconds * 1000L)
+            .setSeekForwardIncrementMs(prefs.seekForwardSeconds * 1000L)
             .build()
             .apply {
                 trackSelectionParameters = trackSelectionParameters.buildUpon()
-                    .setPreferredAudioLanguage(Locale.getDefault().language)
+                    .setPreferredAudioLanguage(prefs.audioLanguage.ifBlank { Locale.getDefault().language })
+                    .setPreferredTextLanguage(prefs.subtitleLanguage.ifBlank { null })
                     .build()
                 playWhenReady = true
             }
@@ -157,6 +178,7 @@ fun PlayerScreen() {
 
     // (Re)load whenever the selected stream changes. Position comes from the request.
     LaunchedEffect(req.streamIndex, req.stream.playableUrl) {
+        streamHeaders.set((req.stream.source as? StreamSource.Direct)?.headers ?: emptyMap())
         player.setMediaItem(mediaItemFor(req, activeSubtitle), (req.startPositionSeconds * 1000).toLong())
         player.prepare()
         message = "${req.stream.addonName}${req.stream.resolution?.let { " · $it" } ?: ""}"
@@ -165,8 +187,19 @@ fun PlayerScreen() {
     }
 
     LaunchedEffect(req.videoId) {
+        val want = prefs.subtitleLanguage.lowercase()
+        fun matches(lang: String) = want.isNotBlank() && (lang.lowercase().startsWith(want) || languageCode3(want) == lang.lowercase())
         subtitles = container.media.subtitles(req.item.type, req.videoId)
-            .sortedWith(compareBy({ !it.lang.startsWith("en") && it.lang != "eng" }, { it.lang }))
+            .sortedWith(compareBy({ !matches(it.lang) }, { it.lang }))
+        // Customise > Player > "Turn subtitles on automatically".
+        if (prefs.autoSubtitles && activeSubtitle == null) {
+            subtitles.firstOrNull { matches(it.lang) }?.let { sub ->
+                activeSubtitle = sub
+                val pos = player.currentPosition
+                player.setMediaItem(mediaItemFor(req, sub), pos)
+                player.prepare()
+            }
+        }
     }
 
     // Periodic progress save + a stream that dies mid-way falls over to the next source.
@@ -176,7 +209,7 @@ fun PlayerScreen() {
                 val current = container.playback.request.value ?: return
                 failedIndexes += current.streamIndex
                 val next = current.streams.indices.firstOrNull { it > current.streamIndex && it !in failedIndexes }
-                if (next != null) {
+                if (next != null && prefs.autoFallback) {
                     message = "Source failed (${error.errorCodeName}) · trying next"
                     container.playback.switchStream(next, player.currentPosition / 1000.0)
                 } else {
@@ -212,16 +245,40 @@ fun PlayerScreen() {
         }
     }
 
-    ImmersiveLandscape()
+    ImmersiveLandscape(prefs.forceLandscape)
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         AndroidView(
             factory = { ctx ->
                 PlayerView(ctx).apply {
                     this.player = player
-                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                    resizeMode = when (prefs.resizeMode) {
+                        ResizeMode.Fit -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+                        ResizeMode.Fill -> AspectRatioFrameLayout.RESIZE_MODE_FILL
+                        ResizeMode.Zoom -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                    }
                     keepScreenOn = true
                     setShowSubtitleButton(true)
+                    subtitleView?.apply {
+                        setStyle(
+                            CaptionStyleCompat(
+                                parseColor(prefs.subtitleColor, Color.White).toArgb(),
+                                parseColor(prefs.subtitleBackground, Color.Transparent).toArgb(),
+                                android.graphics.Color.TRANSPARENT,
+                                when (prefs.subtitleEdge) {
+                                    SubtitleEdge.None -> CaptionStyleCompat.EDGE_TYPE_NONE
+                                    SubtitleEdge.Outline -> CaptionStyleCompat.EDGE_TYPE_OUTLINE
+                                    SubtitleEdge.Shadow -> CaptionStyleCompat.EDGE_TYPE_DROP_SHADOW
+                                    SubtitleEdge.Raised -> CaptionStyleCompat.EDGE_TYPE_RAISED
+                                    SubtitleEdge.Depressed -> CaptionStyleCompat.EDGE_TYPE_DEPRESSED
+                                },
+                                android.graphics.Color.BLACK,
+                                null,
+                            ),
+                        )
+                        setFractionalTextSize(SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * prefs.subtitleScale)
+                        setBottomPaddingFraction(prefs.subtitleBottomPadding)
+                    }
                     setControllerVisibilityListener(PlayerView.ControllerVisibilityListener { v -> controlsVisible = v == android.view.View.VISIBLE })
                 }
             },
@@ -239,10 +296,12 @@ fun PlayerScreen() {
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(req.title, style = MaterialTheme.typography.titleMedium, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(
-                        (if (req.stream.source is StreamSource.Torrent) "P2P VIA PC · " else "DIRECT · ") + req.stream.addonName.uppercase(),
-                        style = MaterialTheme.typography.labelSmall, color = Nx.Cyan, maxLines = 1,
-                    )
+                    if (prefs.showSourceBadge) {
+                        Text(
+                            hud((if (req.stream.source is StreamSource.Torrent) "P2P via PC · " else "Direct · ") + req.stream.addonName),
+                            style = MaterialTheme.typography.labelSmall, color = Nx.Cyan, maxLines = 1,
+                        )
+                    }
                 }
                 PlayerIcon(Icons.Filled.ClosedCaption, "Subtitles", if (activeSubtitle != null) Nx.Cyan else Color.White) {
                     panel = if (panel == Panel.Subtitles) Panel.None else Panel.Subtitles
@@ -320,7 +379,7 @@ fun PlayerScreen() {
 
         message?.let {
             Text(
-                it.uppercase(), style = MaterialTheme.typography.labelMedium, color = Nx.Text,
+                hud(it), style = MaterialTheme.typography.labelMedium, color = Nx.Text,
                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 96.dp).holoPanel().padding(horizontal = 14.dp, vertical = 10.dp),
             )
         }
@@ -348,18 +407,18 @@ private fun PanelRow(title: String, body: String?, selected: Boolean, dim: Boole
             .background(if (selected) Nx.Cyan.copy(alpha = 0.15f) else Color.Transparent)
             .padding(10.dp),
     ) {
-        Text(title.uppercase(), style = MaterialTheme.typography.labelMedium, color = if (dim) Nx.Danger else if (selected) Nx.Cyan else Nx.Text)
+        Text(hud(title), style = MaterialTheme.typography.labelMedium, color = if (dim) Nx.Danger else if (selected) Nx.Cyan else Nx.Text)
         if (!body.isNullOrBlank()) Text(body, style = MaterialTheme.typography.bodyMedium, color = Nx.Muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
     }
 }
 
 /** Landscape + hidden system bars while the player is up; restored on exit. */
 @Composable
-private fun ImmersiveLandscape() {
+private fun ImmersiveLandscape(forceLandscape: Boolean) {
     val activity = LocalContext.current.findActivity() ?: return
-    DisposableEffect(activity) {
+    DisposableEffect(activity, forceLandscape) {
         val previous = activity.requestedOrientation
-        activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        if (forceLandscape) activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         val controller = WindowCompat.getInsetsController(activity.window, activity.window.decorView)
         controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         controller.hide(WindowInsetsCompat.Type.systemBars())
@@ -385,6 +444,10 @@ private fun guessSubtitleMime(url: String): String {
         else -> MimeTypes.APPLICATION_SUBRIP
     }
 }
+
+/** ISO 639-1 -> 639-2 ("en" -> "eng"), since subtitle addons use either. */
+private fun languageCode3(code: String): String? =
+    runCatching { Locale(code).isO3Language.lowercase() }.getOrNull()
 
 private fun languageName(code: String): String {
     val name = runCatching { Locale(code).getDisplayLanguage(Locale.ENGLISH) }.getOrNull()

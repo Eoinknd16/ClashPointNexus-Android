@@ -23,6 +23,7 @@ import com.eoinknd16.nexus.ui.apps.AppDrawerScreen
 import com.eoinknd16.nexus.ui.home.HomeScreen
 import com.eoinknd16.nexus.ui.pc.PcScreen
 import com.eoinknd16.nexus.ui.settings.AddonsScreen
+import com.eoinknd16.nexus.ui.settings.CustomizeScreen
 import com.eoinknd16.nexus.ui.settings.SettingsScreen
 import com.eoinknd16.nexus.ui.theme.NexusTheme
 import com.eoinknd16.nexus.ui.tv.DetailScreen
@@ -68,18 +69,36 @@ class MainActivity : ComponentActivity() {
                                 navArgument("id") { type = NavType.StringType },
                             ),
                         ) { entry ->
-                            val type = runCatching { CatalogType.valueOf(entry.arguments?.getString("type") ?: "") }
-                                .getOrDefault(CatalogType.movie)
+                            val type = entry.arguments?.getString("type")?.takeIf { it.isNotBlank() }
+                                ?.let(::CatalogType) ?: CatalogType.movie
                             DetailScreen(type = type, id = entry.arguments?.getString("id") ?: "")
                         }
                         composable(Routes.PLAYER) { PlayerScreen() }
                         composable(Routes.PC) { PcScreen() }
                         composable(Routes.SETTINGS) { SettingsScreen() }
                         composable(Routes.ADDONS) { AddonsScreen() }
+                        composable(Routes.CUSTOMIZE) { CustomizeScreen() }
                     }
                 }
             }
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        (application as NexusApp).container.widgets.startListening()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        (application as NexusApp).container.widgets.stopListening()
+    }
+
+    @Deprecated("Widget configure results still arrive here (AppWidgetHost API).")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        @Suppress("DEPRECATION")
+        super.onActivityResult(requestCode, resultCode, data)
+        (application as NexusApp).container.widgets.onActivityResult(requestCode, resultCode)
     }
 
     override fun onNewIntent(intent: Intent) {

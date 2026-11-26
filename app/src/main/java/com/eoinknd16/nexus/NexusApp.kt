@@ -9,9 +9,15 @@ import com.eoinknd16.nexus.link.PcLinkClient
 import com.eoinknd16.nexus.link.PcLinkConfig
 import com.eoinknd16.nexus.media.MediaRepository
 import com.eoinknd16.nexus.media.PlaybackSession
+import com.eoinknd16.nexus.media.StremioAccountState
+import com.eoinknd16.nexus.look.Look
+import com.eoinknd16.nexus.look.LookState
+import com.eoinknd16.nexus.weather.WeatherRepository
+import com.eoinknd16.nexus.widgets.WidgetHost
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 class NexusApp : Application() {
     lateinit var container: AppContainer
@@ -35,6 +41,7 @@ class AppContainer(app: Application) {
         addonStore = JsonStore(ds, "addons", MediaRepository.addonListSerializer, emptyList(), scope),
         progressStore = JsonStore(ds, "progress", MediaRepository.progressSerializer, emptyMap(), scope),
         libraryStore = JsonStore(ds, "library", MediaRepository.librarySerializer, emptyList(), scope),
+        accountStore = JsonStore(ds, "stremio_account", StremioAccountState.serializer(), StremioAccountState(), scope),
         pcStore = pcStore,
         pc = pc,
     )
@@ -46,4 +53,23 @@ class AppContainer(app: Application) {
         prefs = JsonStore(ds, "launcher", LauncherPrefs.serializer(), LauncherPrefs(), scope),
         scope = scope,
     )
+
+    /** The whole customisation tree (see look/Look.kt). */
+    val lookStore = JsonStore(ds, "look", Look.serializer(), Look(), scope)
+
+    /** Set by Customise > "Edit home screen"; HomeScreen consumes it. */
+    val homeEditRequest = kotlinx.coroutines.flow.MutableStateFlow(false)
+
+    val weather = WeatherRepository(app)
+    val widgets = WidgetHost(app)
+
+    init {
+        // Push every saved change into the live UI state.
+        scope.launch(Dispatchers.Main) { lookStore.state.collect { LookState.apply(it) } }
+    }
+
+    /** Convenience for "change one thing in the look". */
+    fun editLook(transform: (Look) -> Look) {
+        scope.launch { lookStore.update(transform) }
+    }
 }

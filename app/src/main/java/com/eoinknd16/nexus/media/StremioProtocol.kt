@@ -124,26 +124,39 @@ object StremioProtocol {
 
     suspend fun manifest(addonUrl: String): Addon {
         val base = normalizeUrl(addonUrl)
-        val m = getJson("$base/manifest.json", true, 8_000).jsonObject
+        return parseManifest(getJson("$base/manifest.json", true, 8_000).jsonObject, base)
+    }
+
+    /** Shared by manual installs and Stremio account import (whose collection
+     * already carries each addon's full manifest, so nothing is re-fetched). */
+    fun parseManifest(m: JsonObject, baseUrl: String, fromStremio: Boolean = false): Addon {
+        val base = normalizeUrl(baseUrl)
+        val rules = (m["resources"] as? JsonArray)?.mapNotNull { r ->
+            val o = r as? JsonObject ?: return@mapNotNull null
+            ResourceRule(
+                name = o.str("name") ?: return@mapNotNull null,
+                types = (o["types"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull },
+                idPrefixes = (o["idPrefixes"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull },
+            )
+        } ?: emptyList()
         return Addon(
             name = m.str("name") ?: runCatching { URI(base).host }.getOrNull() ?: base,
             url = base,
             resources = resourceNames(m),
             catalogs = m.arr("catalogs").mapNotNull { c ->
-                val type = when (c.str("type")) {
-                    "movie" -> CatalogType.movie
-                    "series" -> CatalogType.series
-                    else -> return@mapNotNull null // channel/tv/etc. not supported, same as PC
-                }
-                // Catalogs that *require* an extra (e.g. search-only) can't render as a plain row.
-                val required = c.arr("extra").any { e ->
-                    (e["isRequired"] as? JsonPrimitive)?.contentOrNull == "true"
-                } || c.strList("extraRequired").isNotEmpty()
-                if (required) return@mapNotNull null
+                val type = c.str("type")?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
                 val id = c.str("id") ?: return@mapNotNull null
-                AddonCatalogRef(type, id, c.str("name") ?: id)
+                val extras = c.arr("extra")
+                val required = extras.any { e -> (e["isRequired"] as? JsonPrimitive)?.contentOrNull == "true" } ||
+                    c.strList("extraRequired").isNotEmpty()
+                val searchable = extras.any { it.str("name") == "search" } || "search" in c.strList("extraSupported")
+                AddonCatalogRef(CatalogType(type), id, c.str("name") ?: id, requiresExtra = required, searchable = searchable)
             },
             logo = m.str("logo"),
+            types = (m["types"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull },
+            idPrefixes = (m["idPrefixes"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull },
+            rules = rules,
+            fromStremio = fromStremio,
         )
     }
 
@@ -177,7 +190,14 @@ object StremioProtocol {
 
     // ---- Streams ------------------------------------------------------------
 
-    data class RawStream(val title: String, val url: String?, val infoHash: String?, val fileIdx: Int?)
+    data class RawStream(
+        val title: String,
+        val url: String?,
+        val infoHash: String?,
+        val fileIdx: Int?,
+        val headers: Map<String, String>,
+        val externalUrl: String?,
+    )
 
     suspend fun streams(addonUrl: String, type: CatalogType, id: String): List<RawStream> {
         val url = "${normalizeUrl(addonUrl)}/stream/${type.name}/${encodeId(id)}.json"
@@ -186,11 +206,16 @@ object StremioProtocol {
             // Addons put the useful release text in either field; join both like Stremio does.
             val name = s.str("name")
             val title = s.str("title") ?: s.str("description")
+            val hints = s["behaviorHints"] as? JsonObject
+            val proxy = (hints?.get("proxyHeaders") as? JsonObject)?.get("request") as? JsonObject
+            val headers = proxy?.mapNotNull { (k, v) -> (v as? JsonPrimitive)?.contentOrNull?.let { k to it } }?.toMap() ?: emptyMap()
             RawStream(
                 title = listOfNotNull(name, title).joinToString("\n").ifBlank { "Stream" },
                 url = s.str("url"),
                 infoHash = s.str("infoHash"),
                 fileIdx = s.int("fileIdx"),
+                headers = headers,
+                externalUrl = s.str("externalUrl") ?: s.str("ytId")?.let { "https://www.youtube.com/watch?v=$it" },
             )
         }
     }

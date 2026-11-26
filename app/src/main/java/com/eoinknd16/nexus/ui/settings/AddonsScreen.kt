@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
@@ -55,7 +54,9 @@ import com.eoinknd16.nexus.ui.fx.NexusBackdrop
 import com.eoinknd16.nexus.ui.fx.NexusButton
 import com.eoinknd16.nexus.ui.fx.holoPanel
 import com.eoinknd16.nexus.ui.fx.nexusPress
+import com.eoinknd16.nexus.ui.fx.nexusShape
 import com.eoinknd16.nexus.ui.theme.Nx
+import com.eoinknd16.nexus.ui.theme.hud
 import kotlinx.coroutines.launch
 
 @Composable
@@ -119,7 +120,7 @@ fun AddonsScreen() {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         NexusButton("Install", icon = Icons.Filled.Add, filled = true, enabled = url.isNotBlank()) { install(url); url = "" }
                         Spacer(Modifier.width(12.dp))
-                        status?.let { Text(it.uppercase(), style = MaterialTheme.typography.labelSmall, color = Nx.Amber) }
+                        status?.let { Text(hud(it), style = MaterialTheme.typography.labelSmall, color = Nx.Amber) }
                     }
                 }
 
@@ -153,7 +154,7 @@ private fun InstalledRow(addon: Addon, onUp: () -> Unit, onDown: () -> Unit, onR
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Text(addon.name, style = MaterialTheme.typography.titleMedium, color = Nx.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(addon.resources.joinToString(" · ").uppercase(), style = MaterialTheme.typography.labelSmall, color = Nx.Cyan)
+            Text(hud(addon.resources.joinToString(" · ")), style = MaterialTheme.typography.labelSmall, color = Nx.Cyan)
         }
         SmallIcon(Icons.Filled.KeyboardArrowUp, "Move up", onUp)
         SmallIcon(Icons.Filled.KeyboardArrowDown, "Move down", onDown)
@@ -169,7 +170,7 @@ private fun CommunityRow(addon: CommunityAddon, installed: Boolean, onInstall: (
         Column(Modifier.weight(1f)) {
             Text(addon.name, style = MaterialTheme.typography.titleMedium, color = Nx.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(addon.description, style = MaterialTheme.typography.bodyMedium, color = Nx.Muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text(addon.resources.joinToString(" · ").uppercase(), style = MaterialTheme.typography.labelSmall, color = Nx.Cyan)
+            Text(hud(addon.resources.joinToString(" · ")), style = MaterialTheme.typography.labelSmall, color = Nx.Cyan)
         }
         if (installed) SmallIcon(Icons.Filled.Check, "Installed", {}, Nx.Lime)
         else SmallIcon(Icons.Filled.Add, "Install", onInstall)
@@ -178,7 +179,7 @@ private fun CommunityRow(addon: CommunityAddon, installed: Boolean, onInstall: (
 
 @Composable
 private fun Logo(url: String?) {
-    Box(Modifier.size(40.dp).clip(CutCornerShape(6.dp)).background(Nx.Deep), contentAlignment = Alignment.Center) {
+    Box(Modifier.size(40.dp).clip(nexusShape(0.43f)).background(Nx.Deep), contentAlignment = Alignment.Center) {
         if (url != null) AsyncImage(url, null, contentScale = ContentScale.Fit, modifier = Modifier.size(34.dp))
     }
 }

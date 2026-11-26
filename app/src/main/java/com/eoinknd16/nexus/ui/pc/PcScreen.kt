@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -61,7 +60,9 @@ import com.eoinknd16.nexus.ui.fx.NexusBackdrop
 import com.eoinknd16.nexus.ui.fx.NexusButton
 import com.eoinknd16.nexus.ui.fx.nexusPress
 import com.eoinknd16.nexus.ui.nexusViewModel
+import com.eoinknd16.nexus.ui.fx.nexusShape
 import com.eoinknd16.nexus.ui.theme.Nx
+import com.eoinknd16.nexus.ui.theme.hud
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -201,7 +202,7 @@ fun PcScreen() {
         }
         state.toast?.let {
             Text(
-                it.uppercase(), style = MaterialTheme.typography.labelMedium, color = Nx.Text,
+                hud(it), style = MaterialTheme.typography.labelMedium, color = Nx.Text,
                 modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(16.dp)
                     .background(Nx.PanelSolid).border(1.dp, Nx.CyanDim).padding(12.dp),
             )
@@ -242,7 +243,7 @@ private fun PadKey(icon: ImageVector, label: String, modifier: Modifier, onClick
 @Composable
 private fun RoundKey(icon: ImageVector, label: String, onClick: () -> Unit) {
     Box(
-        Modifier.size(56.dp).nexusPress(onClick).clip(CutCornerShape(12.dp)).background(Nx.Panel).border(1.dp, Nx.CyanDim, CutCornerShape(12.dp)),
+        Modifier.size(56.dp).nexusPress(onClick).clip(nexusShape(0.86f)).background(Nx.Panel).border(1.dp, Nx.CyanDim, nexusShape(0.86f)),
         contentAlignment = Alignment.Center,
     ) { Icon(icon, label, tint = Nx.Text) }
 }

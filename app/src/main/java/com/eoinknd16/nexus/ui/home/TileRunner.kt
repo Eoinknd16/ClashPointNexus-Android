@@ -1,0 +1,159 @@
+package com.eoinknd16.nexus.ui.home
+
+import android.annotation.SuppressLint
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.navigation.NavController
+import com.eoinknd16.nexus.AppContainer
+import com.eoinknd16.nexus.launcher.LaunchableApp
+import com.eoinknd16.nexus.link.WakeOnLan
+import com.eoinknd16.nexus.look.HomeBlock
+import com.eoinknd16.nexus.look.LookState
+import com.eoinknd16.nexus.look.SearchEngine
+import com.eoinknd16.nexus.look.TileAction
+import com.eoinknd16.nexus.look.TileConfig
+import com.eoinknd16.nexus.ui.Routes
+import kotlinx.coroutines.launch
+import java.net.URLEncoder
+
+/** Nexus screens a tile can open, by the key stored in TileAction.arg. */
+val SCREEN_TARGETS = listOf(
+    "tv" to "TV",
+    "search" to "Search",
+    "pc" to "PC remote",
+    "apps" to "App drawer",
+    "settings" to "Settings",
+    "customize" to "Customise",
+    "addons" to "Addons",
+)
+
+/** Android settings pages a tile can open. */
+val SETTINGS_TARGETS = listOf(
+    "all" to "All settings",
+    "wifi" to "Wi-Fi",
+    "bluetooth" to "Bluetooth",
+    "display" to "Display",
+    "sound" to "Sound",
+    "battery" to "Battery",
+    "apps" to "Apps",
+    "location" to "Location",
+    "home" to "Home app",
+)
+
+/** PC remote buttons (must match the PC's NAV_ACTIONS whitelist). */
+val PC_NAV_TARGETS = listOf(
+    "up" to "Up", "down" to "Down", "left" to "Left", "right" to "Right", "confirm" to "OK", "back" to "Back",
+    "menu" to "Menu", "quickMenu" to "Quick menu", "search" to "Search", "volumeUp" to "Volume up",
+    "volumeDown" to "Volume down", "toggleSubtitles" to "Subtitles", "skipNext" to "Next episode",
+)
+
+val PC_SCREEN_TARGETS = listOf(
+    "home" to "Home", "tv" to "TV", "games" to "Games", "apps" to "Apps", "library" to "Library",
+    "store" to "Store", "browse" to "Browser", "files" to "Files", "settings" to "Settings",
+)
+
+fun screenRoute(key: String): String? = when (key) {
+    "tv" -> Routes.TV
+    "search" -> Routes.SEARCH
+    "pc" -> Routes.PC
+    "apps" -> Routes.APPS
+    "settings" -> Routes.SETTINGS
+    "customize" -> Routes.CUSTOMIZE
+    "addons" -> Routes.ADDONS
+    else -> null
+}
+
+/** Runs what a tile/dock slot is set to do. Folders are opened by the caller (they need UI state). */
+class TileRunner(
+    private val context: Context,
+    private val c: AppContainer,
+    private val nav: NavController,
+    private val toast: (String) -> Unit,
+) {
+    fun launch(app: LaunchableApp) = c.apps.launch(app)
+
+    fun app(key: String): LaunchableApp? = c.apps.apps.value.firstOrNull { it.key == key }
+
+    fun appIcon(tile: TileConfig): ImageBitmap? =
+        if (tile.action.kind == TileAction.Kind.LaunchApp && tile.useAppIcon) app(tile.action.arg)?.icon else null
+
+    fun run(tile: TileConfig) {
+        val a = tile.action
+        when (a.kind) {
+            TileAction.Kind.Screen -> screenRoute(a.arg)?.let { nav.navigate(it) } ?: toast("Unknown screen")
+            TileAction.Kind.LaunchApp -> app(a.arg)?.let(c.apps::launch) ?: toast("App not installed")
+            TileAction.Kind.WakePc -> c.scope.launch {
+                val cfg = c.pcStore.get()
+                if (cfg.macs.isEmpty()) {
+                    toast(if (cfg.isPaired) "No MAC address on file" else "Link your PC first")
+                } else {
+                    val subnet = Regex("^(\\d+\\.\\d+\\.\\d+)\\.\\d+$").find(cfg.host)?.groupValues?.get(1)?.let { "$it.255" }
+                    val sent = runCatching { WakeOnLan.wake(cfg.macs, listOfNotNull(subnet)) }.getOrDefault(0)
+                    toast(if (sent > 0) "Wake packet sent" else "Couldn't send wake packet")
+                }
+            }
+            TileAction.Kind.PcNav -> c.scope.launch {
+                runCatching { c.pc.nav(a.arg) }.onFailure { toast("PC didn't respond") }
+            }
+            TileAction.Kind.PcScreen -> c.scope.launch {
+                runCatching { c.pc.openScreen(a.arg) }.onFailure { toast("PC didn't respond") }
+            }
+            TileAction.Kind.Url -> openUrl(a.arg)
+            TileAction.Kind.WebSearch -> webSearch(a.arg)
+            TileAction.Kind.Settings -> openSettings(a.arg)
+            TileAction.Kind.Notifications -> expandNotifications(context)
+            TileAction.Kind.Folder, TileAction.Kind.None -> {}
+        }
+    }
+
+    fun openUrl(url: String) {
+        if (url.isBlank()) return toast("No link set")
+        val fixed = if (Regex("^[a-z]+://", RegexOption.IGNORE_CASE).containsMatchIn(url)) url else "https://$url"
+        start(Intent(Intent.ACTION_VIEW, Uri.parse(fixed)))
+    }
+
+    fun webSearch(query: String, engine: SearchEngine? = null, customUrl: String? = null) {
+        val bar = LookState.look.home.blocks.filterIsInstance<HomeBlock.SearchBar>().firstOrNull()
+        val e = engine ?: bar?.engine ?: SearchEngine.Google
+        val template = if (e == SearchEngine.Custom) (customUrl ?: bar?.customUrl ?: SearchEngine.Google.url) else e.url
+        if (query.isBlank()) {
+            // No query: open the engine's front page.
+            openUrl(template.substringBefore("?").substringBefore("%s"))
+            return
+        }
+        openUrl(template.replace("%s", URLEncoder.encode(query.trim(), "UTF-8")))
+    }
+
+    fun openSettings(key: String) {
+        val action = when (key) {
+            "wifi" -> Settings.ACTION_WIFI_SETTINGS
+            "bluetooth" -> Settings.ACTION_BLUETOOTH_SETTINGS
+            "display" -> Settings.ACTION_DISPLAY_SETTINGS
+            "sound" -> Settings.ACTION_SOUND_SETTINGS
+            "battery" -> Intent.ACTION_POWER_USAGE_SUMMARY
+            "apps" -> Settings.ACTION_APPLICATION_SETTINGS
+            "location" -> Settings.ACTION_LOCATION_SOURCE_SETTINGS
+            "home" -> Settings.ACTION_HOME_SETTINGS
+            else -> Settings.ACTION_SETTINGS
+        }
+        if (!start(Intent(action))) start(Intent(Settings.ACTION_SETTINGS))
+    }
+
+    private fun start(intent: Intent): Boolean = runCatching {
+        context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    }.isSuccess.also { if (!it) toast("Nothing on this phone can open that") }
+
+    companion object {
+        /** Pulls the notification shade down (needs EXPAND_STATUS_BAR, granted at install). */
+        @SuppressLint("WrongConstant")
+        fun expandNotifications(context: Context) {
+            runCatching {
+                val sbm = context.getSystemService("statusbar")
+                Class.forName("android.app.StatusBarManager").getMethod("expandNotificationsPanel").invoke(sbm)
+            }
+        }
+    }
+}

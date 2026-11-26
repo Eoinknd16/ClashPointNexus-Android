@@ -22,6 +22,8 @@ data class PcLinkConfig(
     val name: String = "",
     /** MAC addresses reported by the PC at pairing time, for wake-on-LAN. */
     val macs: List<String> = emptyList(),
+    /** The PC's stable id, so it can be found again on the LAN if its IP changes. */
+    val pcId: String = "",
 ) {
     val isPaired: Boolean get() = host.isNotBlank() && token.isNotBlank()
     val baseUrl: String get() = "http://$host:$port"
@@ -29,6 +31,8 @@ data class PcLinkConfig(
     companion object {
         /** Must match REMOTE_API_PORT in the PC build (src/main/remote/server.ts). */
         const val DEFAULT_PORT = 11480
+        /** Must match REMOTE_DISCOVERY_PORT on the PC. */
+        const val DISCOVERY_PORT = 11481
     }
 }
 
@@ -40,6 +44,7 @@ data class PcStatus(
     val version: String,
     val screen: String? = null,
     val macs: List<String> = emptyList(),
+    val pcId: String? = null,
     val nowPlaying: PcNowPlaying? = null,
 )
 
@@ -50,7 +55,29 @@ data class PcNowPlaying(val title: String, val positionSeconds: Double? = null, 
 data class PairRequest(val code: String, val deviceName: String)
 
 @Serializable
-data class PairResponse(val token: String, val name: String, val macs: List<String> = emptyList())
+data class PairResponse(val token: String, val name: String, val macs: List<String> = emptyList(), val pcId: String? = null)
+
+@Serializable
+data class PairRequestBody(val deviceName: String)
+
+@Serializable
+data class PairRequestResponse(val requestId: String, val code: String, val name: String, val pcId: String? = null)
+
+@Serializable
+data class PairStatus(
+    val state: String,
+    val token: String? = null,
+    val name: String? = null,
+    val macs: List<String> = emptyList(),
+    val pcId: String? = null,
+)
+
+/** A Nexus PC that answered a LAN discovery broadcast. */
+@Serializable
+data class DiscoveredPc(val host: String, val port: Int, val name: String, val pcId: String, val version: String = "")
+
+@Serializable
+private data class DiscoveryReply(val nexus: Int = 0, val pcId: String = "", val name: String = "", val port: Int = PcLinkConfig.DEFAULT_PORT, val version: String = "")
 
 @Serializable
 data class AddonsResponse(val addons: List<Addon>)
@@ -94,22 +121,69 @@ class PcLinkClient(private val store: JsonStore<PcLinkConfig>) {
         val base = "http://${host.trim()}:$port"
         val body = Http.json.encodeToString(PairRequest.serializer(), PairRequest(code.trim(), deviceName))
         val res = Http.json.decodeFromString(PairResponse.serializer(), Http.postJson("$base/api/pair", body, timeoutMs = 6_000))
-        val config = PcLinkConfig(host = host.trim(), port = port, token = res.token, name = res.name, macs = res.macs)
+        val config = PcLinkConfig(host = host.trim(), port = port, token = res.token, name = res.name, macs = res.macs, pcId = res.pcId ?: "")
         store.set(config)
         return config
+    }
+
+    /**
+     * Automatic pairing: asks the PC to show an Allow / Deny prompt on the TV,
+     * then waits (up to ~2 minutes) for an answer. [onCode] gets the 4-digit
+     * code the TV is showing too, so the user can match them.
+     */
+    suspend fun pairAutomatically(pc: DiscoveredPc, deviceName: String, onCode: (String) -> Unit): PcLinkConfig {
+        val base = "http://${pc.host}:${pc.port}"
+        val body = Http.json.encodeToString(PairRequestBody.serializer(), PairRequestBody(deviceName))
+        val req = Http.json.decodeFromString(PairRequestResponse.serializer(), Http.postJson("$base/api/pair-request", body, timeoutMs = 6_000))
+        onCode(req.code)
+        val deadline = System.currentTimeMillis() + 125_000
+        while (System.currentTimeMillis() < deadline) {
+            kotlinx.coroutines.delay(1_500)
+            val st = runCatching {
+                Http.json.decodeFromString(PairStatus.serializer(), Http.getText("$base/api/pair-status?id=${req.requestId}", timeoutMs = 5_000))
+            }.getOrNull() ?: continue
+            when (st.state) {
+                "approved" -> {
+                    val config = PcLinkConfig(
+                        host = pc.host, port = pc.port, token = st.token ?: error("No token"),
+                        name = st.name ?: pc.name, macs = st.macs, pcId = st.pcId ?: pc.pcId,
+                    )
+                    store.set(config)
+                    return config
+                }
+                "denied" -> error("The PC said no")
+                "expired" -> error("Timed out waiting for the PC")
+            }
+        }
+        error("Timed out waiting for the PC")
     }
 
     suspend fun unpair() = store.set(PcLinkConfig())
 
     suspend fun status(): PcStatus {
         val c = config()
-        val status = Http.json.decodeFromString(
-            PcStatus.serializer(),
-            Http.getText("${c.baseUrl}/api/status", auth(c), timeoutMs = 4_000),
-        )
+        val status = runCatching { fetchStatus(c) }.getOrElse { first ->
+            // The PC may just have a new IP (DHCP). Find it by its id and carry on.
+            relocate(c) ?: throw first
+            fetchStatus(config())
+        }
         // Keep wake-on-LAN targets fresh (a new network adapter, say).
         if (status.macs.isNotEmpty() && status.macs != c.macs) store.update { it.copy(macs = status.macs, name = status.name) }
         return status
+    }
+
+    private suspend fun fetchStatus(c: PcLinkConfig): PcStatus = Http.json.decodeFromString(
+        PcStatus.serializer(),
+        Http.getText("${c.baseUrl}/api/status", auth(c), timeoutMs = 4_000),
+    )
+
+    /** Re-finds a paired PC on the LAN by pcId; updates the saved address if it moved. */
+    private suspend fun relocate(c: PcLinkConfig): PcLinkConfig? {
+        if (c.pcId.isBlank()) return null
+        val found = PcDiscovery.discover(1_800).firstOrNull { it.pcId == c.pcId } ?: return null
+        if (found.host == c.host && found.port == c.port) return null
+        store.update { it.copy(host = found.host, port = found.port) }
+        return config()
     }
 
     suspend fun addons(): List<Addon> {
@@ -132,8 +206,9 @@ class PcLinkClient(private val store: JsonStore<PcLinkConfig>) {
     /** URL the phone's player can open for a torrent stream -- proxied through
      * Nexus on the PC (its Stremio server only listens on the PC itself).
      * Token goes in the query because the player fetches it directly. */
-    fun torrentStreamUrl(c: PcLinkConfig, infoHash: String, fileIdx: Int): String =
-        "${c.baseUrl}/stremio/$infoHash/$fileIdx?token=${URLEncoder.encode(c.token, "UTF-8")}"
+    fun torrentStreamUrl(c: PcLinkConfig, infoHash: String, fileIdx: Int?): String =
+        // -1 = "addon didn't say", which the Stremio server reads as "pick the main video file".
+        "${c.baseUrl}/stremio/$infoHash/${fileIdx ?: -1}?token=${URLEncoder.encode(c.token, "UTF-8")}"
 
     suspend fun cast(request: CastRequest): OkResponse = post("/api/cast", Http.json.encodeToString(CastRequest.serializer(), request))
 
@@ -146,6 +221,53 @@ class PcLinkClient(private val store: JsonStore<PcLinkConfig>) {
         val c = config()
         return Http.json.decodeFromString(OkResponse.serializer(), Http.postJson("${c.baseUrl}$path", body, auth(c), timeoutMs = 6_000))
     }
+}
+
+/** Finds Nexus PCs on the local network: broadcast, then collect replies. */
+object PcDiscovery {
+    suspend fun discover(timeoutMs: Long = 2_500): List<DiscoveredPc> = withContext(Dispatchers.IO) {
+        val found = linkedMapOf<String, DiscoveredPc>()
+        runCatching {
+            DatagramSocket().use { socket ->
+                socket.broadcast = true
+                socket.soTimeout = 300
+                val probe = "NEXUS_DISCOVER".toByteArray()
+                val targets = (listOf("255.255.255.255") + subnetBroadcasts()).distinct()
+                // A couple of rounds: UDP can drop on busy Wi-Fi.
+                val deadline = System.currentTimeMillis() + timeoutMs
+                var nextSend = 0L
+                val buf = ByteArray(2048)
+                while (System.currentTimeMillis() < deadline) {
+                    if (System.currentTimeMillis() >= nextSend) {
+                        for (t in targets) runCatching {
+                            socket.send(DatagramPacket(probe, probe.size, InetAddress.getByName(t), PcLinkConfig.DISCOVERY_PORT))
+                        }
+                        nextSend = System.currentTimeMillis() + 800
+                    }
+                    val packet = DatagramPacket(buf, buf.size)
+                    try {
+                        socket.receive(packet)
+                    } catch (_: java.net.SocketTimeoutException) {
+                        continue
+                    }
+                    val text = String(packet.data, 0, packet.length, Charsets.UTF_8)
+                    val reply = runCatching { Http.json.decodeFromString(DiscoveryReply.serializer(), text) }.getOrNull() ?: continue
+                    if (reply.nexus != 1 || reply.pcId.isBlank()) continue
+                    val host = packet.address.hostAddress ?: continue
+                    found[reply.pcId] = DiscoveredPc(host, reply.port, reply.name, reply.pcId, reply.version)
+                }
+            }
+        }
+        found.values.toList()
+    }
+
+    /** x.y.z.255 for each of this phone's IPv4 networks (some routers drop 255.255.255.255). */
+    private fun subnetBroadcasts(): List<String> = runCatching {
+        java.net.NetworkInterface.getNetworkInterfaces().toList()
+            .filter { it.isUp && !it.isLoopback }
+            .flatMap { it.interfaceAddresses }
+            .mapNotNull { it.broadcast?.hostAddress }
+    }.getOrDefault(emptyList())
 }
 
 /** Wake-on-LAN magic packet: 6x 0xFF then the MAC 16 times, broadcast on UDP 9.

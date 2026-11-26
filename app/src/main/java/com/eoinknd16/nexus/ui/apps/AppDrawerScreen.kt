@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -49,11 +48,19 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import com.eoinknd16.nexus.look.LookState
+import com.eoinknd16.nexus.look.TileAction
+import com.eoinknd16.nexus.look.appTile
+import com.eoinknd16.nexus.look.updateDock
 import com.eoinknd16.nexus.launcher.LaunchableApp
 import com.eoinknd16.nexus.ui.ScreenHeader
 import com.eoinknd16.nexus.ui.appContainer
 import com.eoinknd16.nexus.ui.fx.NexusBackdrop
 import com.eoinknd16.nexus.ui.fx.nexusPress
+import com.eoinknd16.nexus.ui.fx.nexusShape
 import com.eoinknd16.nexus.ui.theme.Nx
 import kotlinx.coroutines.launch
 
@@ -65,6 +72,12 @@ fun AppDrawerScreen() {
     var query by rememberSaveable { mutableStateOf("") }
     var showHidden by rememberSaveable { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+
+    val c = appContainer()
+    val drawer = LookState.look.drawer
+    val dockKeys = LookState.look.home.dock.items.filter { it.action.kind == TileAction.Kind.LaunchApp }.map { it.action.arg }.toSet()
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(drawer.autoFocusSearch) { if (drawer.autoFocusSearch) runCatching { focus.requestFocus() } }
 
     val visible = apps
         .filter { showHidden || it.key !in prefs.hidden }
@@ -81,19 +94,26 @@ fun AppDrawerScreen() {
                     )
                 }
             }
-            SearchField(query, { query = it }, onGo = { visible.firstOrNull()?.let(repo::launch) })
+            if (drawer.showSearch) SearchField(query, { query = it }, focus, onGo = { visible.firstOrNull()?.let(repo::launch) })
             LazyVerticalGrid(
-                columns = GridCells.Adaptive(78.dp),
+                columns = if (drawer.columns > 0) GridCells.Fixed(drawer.columns) else GridCells.Adaptive((drawer.iconSizeDp + 26).dp),
                 modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 items(visible, key = { it.key }) { app ->
                     AppCell(
                         app = app,
-                        pinned = app.key in prefs.pinned,
+                        pinned = app.key in dockKeys,
                         hidden = app.key in prefs.hidden,
+                        iconSize = drawer.iconSizeDp.dp,
+                        showLabel = drawer.showLabels,
                         onLaunch = { repo.launch(app) },
-                        onPin = { scope.launch { repo.togglePin(app) } },
+                        onPin = {
+                            c.editLook { l ->
+                                if (app.key in dockKeys) l.updateDock { d -> d.copy(items = d.items.filterNot { it.action.kind == TileAction.Kind.LaunchApp && it.action.arg == app.key }) }
+                                else l.updateDock { d -> d.copy(items = d.items + appTile(app.key, app.label)) }
+                            }
+                        },
                         onHide = { scope.launch { repo.toggleHidden(app) } },
                         onInfo = { repo.openAppInfo(app) },
                         onUninstall = { repo.uninstall(app) },
@@ -105,14 +125,14 @@ fun AppDrawerScreen() {
 }
 
 @Composable
-private fun SearchField(value: String, onChange: (String) -> Unit, onGo: () -> Unit) {
+private fun SearchField(value: String, onChange: (String) -> Unit, focus: FocusRequester, onGo: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp)
-            .clip(CutCornerShape(topStart = 10.dp, bottomEnd = 10.dp))
+            .clip(nexusShape(0.71f))
             .background(Nx.Panel)
-            .border(1.dp, Nx.CyanDim, CutCornerShape(topStart = 10.dp, bottomEnd = 10.dp))
+            .border(1.dp, Nx.CyanDim, nexusShape(0.71f))
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -128,7 +148,7 @@ private fun SearchField(value: String, onChange: (String) -> Unit, onGo: () -> U
                 cursorBrush = SolidColor(Nx.Cyan),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
                 keyboardActions = KeyboardActions(onGo = { onGo() }),
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().focusRequester(focus),
             )
         }
     }
@@ -139,6 +159,8 @@ private fun AppCell(
     app: LaunchableApp,
     pinned: Boolean,
     hidden: Boolean,
+    iconSize: androidx.compose.ui.unit.Dp,
+    showLabel: Boolean,
     onLaunch: () -> Unit,
     onPin: () -> Unit,
     onHide: () -> Unit,
@@ -152,17 +174,17 @@ private fun AppCell(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Box {
-                Image(app.icon, null, Modifier.size(52.dp))
-                if (pinned) Box(Modifier.size(8.dp).align(Alignment.TopEnd).background(Nx.Cyan, CutCornerShape(2.dp)))
+                Image(app.icon, null, Modifier.size(iconSize))
+                if (pinned) Box(Modifier.size(8.dp).align(Alignment.TopEnd).background(Nx.Cyan, nexusShape(0.14f)))
             }
-            Spacer(Modifier.height(6.dp))
-            Text(
+            if (showLabel) Spacer(Modifier.height(6.dp))
+            if (showLabel) Text(
                 app.label, style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp),
                 color = if (hidden) Nx.Muted else Nx.Text, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center,
             )
         }
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, containerColor = Nx.PanelSolid) {
-            DropdownMenuItem(text = { Text(if (pinned) "Unpin from dock" else "Pin to dock") }, onClick = { menu = false; onPin() })
+            DropdownMenuItem(text = { Text(if (pinned) "Remove from tray" else "Add to tray") }, onClick = { menu = false; onPin() })
             DropdownMenuItem(text = { Text(if (hidden) "Unhide" else "Hide") }, onClick = { menu = false; onHide() })
             DropdownMenuItem(text = { Text("App info") }, onClick = { menu = false; onInfo() })
             DropdownMenuItem(text = { Text("Uninstall") }, onClick = { menu = false; onUninstall() })
