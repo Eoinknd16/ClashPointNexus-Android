@@ -44,6 +44,8 @@ data class LauncherPrefs(
     /** Component keys pinned to the home dock, in order. */
     val pinned: List<String> = emptyList(),
     val hidden: List<String> = emptyList(),
+    /** Package of the chosen icon pack ("" = the apps' own icons). */
+    val iconPack: String = "",
     /** How often / when each app is opened through Nexus (for suggestions). Stays on the phone. */
     val usage: Map<String, AppUsage> = emptyMap(),
 )
@@ -92,23 +94,44 @@ class AppsRepository(
         refresh()
     }
 
+    init {
+        // Reload icons once saved settings arrive (or the icon pack changes).
+        scope.launch {
+            var last: String? = null
+            prefs.state.collect { p ->
+                if (last != null && p.iconPack != last) refresh()
+                if (last == null && p.iconPack.isNotBlank()) refresh()
+                last = p.iconPack
+            }
+        }
+    }
+
     fun refresh() {
         scope.launch {
             _apps.value = withContext(Dispatchers.Default) { load() }
         }
     }
 
+    private var pack: IconPack? = null
+
     private fun load(): List<LaunchableApp> {
         val self = context.packageName
+        val packName = runCatching { prefs.value.iconPack }.getOrDefault("")
+        if (pack?.packageName != packName) {
+            pack = if (packName.isBlank()) null else runCatching { IconPack(context, packName) }.getOrNull()
+        }
+        val iconPack = pack
         return launcherApps.profiles.flatMap { user -> launcherApps.getActivityList(null, user) }
             .filter { it.componentName.packageName != self }
             .map { info ->
+                val themed = iconPack?.let { p -> runCatching { p.icon(info.componentName) }.getOrNull() }
                 LaunchableApp(
                     label = info.label?.toString() ?: info.componentName.packageName,
                     packageName = info.componentName.packageName,
                     component = info.componentName,
                     user = info.user,
-                    icon = info.getBadgedIcon(0).toBitmap(iconSizePx, iconSizePx).asImageBitmap(),
+                    icon = runCatching { (themed ?: info.getBadgedIcon(0)).toBitmap(iconSizePx, iconSizePx) }
+                        .getOrElse { info.getBadgedIcon(0).toBitmap(iconSizePx, iconSizePx) }.asImageBitmap(),
                 )
             }
             .distinctBy { it.key }
@@ -212,6 +235,13 @@ class AppsRepository(
 
     suspend fun togglePin(app: LaunchableApp) = prefs.update { p ->
         if (app.key in p.pinned) p.copy(pinned = p.pinned - app.key) else p.copy(pinned = p.pinned + app.key)
+    }
+
+    fun iconPacks(): List<Pair<String, String>> = runCatching { IconPack.installed(context) }.getOrDefault(emptyList())
+
+    /** Switch icon pack ("" = none) and reload every icon. */
+    fun setIconPack(pkg: String) {
+        scope.launch { prefs.update { it.copy(iconPack = pkg) } }
     }
 
     suspend fun toggleHidden(app: LaunchableApp) = prefs.update { p ->
