@@ -1,5 +1,11 @@
 package com.eoinknd16.nexus.ui.apps
 
+import com.eoinknd16.nexus.look.addBlock
+
+import com.eoinknd16.nexus.look.upsertTile
+
+import androidx.compose.material.icons.filled.Home
+
 import com.eoinknd16.nexus.ui.home.NotificationDot
 
 import androidx.compose.material.icons.filled.Delete
@@ -176,6 +182,17 @@ fun AppDrawerContent(
                                 else l.updateDock { d -> d.copy(items = d.items + appTile(app.key, app.label)) }
                             }
                         },
+                        onAddHome = {
+                            // Onto the first tile grid of the page you're on (or a new one).
+                            c.editLook("${app.label} added to home") { l ->
+                                val pageId = com.eoinknd16.nexus.look.HomePager.current
+                                val blocks = l.home.pages.firstOrNull { it.id == pageId }?.blocks ?: l.home.blocks
+                                val grid = blocks.filterIsInstance<com.eoinknd16.nexus.look.HomeBlock.Tiles>().firstOrNull()
+                                if (grid != null) l.upsertTile(grid.id, appTile(app.key, app.label))
+                                else l.addBlock(com.eoinknd16.nexus.look.HomeBlock.Tiles(title = "", tiles = listOf(appTile(app.key, app.label))), pageId = pageId)
+                            }
+                            onLaunched()
+                        },
                         onHide = { scope.launch { repo.toggleHidden(app) } },
                         onInfo = { repo.openAppInfo(app) },
                         onUninstall = { repo.uninstall(app) },
@@ -294,6 +311,7 @@ private fun AppCell(
     showLabel: Boolean,
     onLaunch: () -> Unit,
     onPin: () -> Unit,
+    onAddHome: () -> Unit,
     onHide: () -> Unit,
     onInfo: () -> Unit,
     onUninstall: () -> Unit,
@@ -318,6 +336,7 @@ private fun AppCell(
             com.eoinknd16.nexus.ui.home.AppQuickMenu(
                 app,
                 listOf(
+                    com.eoinknd16.nexus.ui.home.QuickAction("To home", Icons.Filled.Home, onClick = onAddHome),
                     com.eoinknd16.nexus.ui.home.QuickAction(if (pinned) "Unpin" else "To tray", Icons.Filled.PushPin, onClick = onPin),
                     com.eoinknd16.nexus.ui.home.QuickAction(if (hidden) "Unhide" else "Hide", if (hidden) Icons.Filled.Visibility else Icons.Filled.VisibilityOff, onClick = onHide),
                     com.eoinknd16.nexus.ui.home.QuickAction("Info", Icons.Filled.Info, onClick = onInfo),
