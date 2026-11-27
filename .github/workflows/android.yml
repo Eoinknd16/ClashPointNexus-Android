@@ -54,7 +54,7 @@ jobs:
         run: |
           ./gradlew --no-daemon assemblePhoneRelease assembleTvRelease
           cp app/build/outputs/apk/phone/release/*.apk "nexus-${{ steps.ver.outputs.tag }}.apk"
-          cp app/build/outputs/apk/tv/release/*.apk "nexus-${{ steps.ver.outputs.tag }}-tv.apk"
+          cp app/build/outputs/apk/tv/release/*.apk "nexustv-${{ steps.ver.outputs.tag }}-tv.apk"
 
       - name: Publish release
         if: steps.ver.outputs.tag != ''
@@ -73,4 +73,4 @@ jobs:
         if: steps.ver.outputs.tag != ''
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "${{ steps.ver.outputs.tag }}" "nexus-${{ steps.ver.outputs.tag }}-tv.apk" -R "${{ github.repository }}"
+        run: gh release upload "${{ steps.ver.outputs.tag }}" "nexustv-${{ steps.ver.outputs.tag }}-tv.apk" -R "${{ github.repository }}"
