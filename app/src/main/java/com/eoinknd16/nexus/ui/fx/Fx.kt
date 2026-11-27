@@ -504,6 +504,15 @@ fun HudLabel(text: String, modifier: Modifier = Modifier, color: Color = Nx.Cyan
 // ---------------------------------------------------------------------------
 
 @Composable
+/**
+ * Plain tap for big areas (scrims, panel backgrounds): no shrink, no buzz.
+ * [onTap] null = just swallow taps so they don't reach what's behind.
+ */
+fun Modifier.plainTap(onTap: (() -> Unit)?): Modifier = pointerInput(onTap) {
+    detectTapGestures(onTap = { onTap?.invoke() })
+}
+
+@Composable
 fun Modifier.nexusPress(onClick: () -> Unit, onLongClick: (() -> Unit)? = null): Modifier {
     val haptics = LocalHapticFeedback.current
     val motion = LookState.look.motion

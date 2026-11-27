@@ -62,6 +62,7 @@ import com.eoinknd16.nexus.ui.appContainer
 import com.eoinknd16.nexus.ui.fx.HudLabel
 import com.eoinknd16.nexus.ui.fx.holoPanel
 import com.eoinknd16.nexus.ui.fx.nexusPress
+import com.eoinknd16.nexus.ui.fx.plainTap
 import com.eoinknd16.nexus.ui.fx.nexusShape
 import com.eoinknd16.nexus.ui.theme.Nx
 import com.eoinknd16.nexus.ui.theme.hud
@@ -121,11 +122,11 @@ fun PcHubPanel(onOpenRemote: () -> Unit) {
 
     val bars = rememberSystemBarPadding()
     Dialog(onDismissRequest = ::close, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
-        Box(Modifier.fillMaxSize().nexusPress(::close).padding(top = bars.top, bottom = bars.bottom), contentAlignment = Alignment.BottomCenter) {
+        Box(Modifier.fillMaxSize().plainTap(::close).padding(top = bars.top, bottom = bars.bottom), contentAlignment = Alignment.BottomCenter) {
             Column(
                 Modifier.fillMaxWidth().padding(12.dp)
                     .scrollIfTall()
-                    .nexusPress({}) // taps inside don't close it
+                    .plainTap(null) // taps inside don't close it
                     .holoPanel(Nx.Cyan, 0.25f).background(Nx.PanelSolid.copy(alpha = 0.9f), nexusShape(0.6f)).padding(16.dp),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {

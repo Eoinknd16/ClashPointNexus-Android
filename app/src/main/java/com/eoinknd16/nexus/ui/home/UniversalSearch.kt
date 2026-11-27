@@ -99,6 +99,7 @@ import com.eoinknd16.nexus.ui.appContainer
 import com.eoinknd16.nexus.ui.apps.fuzzyScore
 import com.eoinknd16.nexus.ui.fx.holoPanel
 import com.eoinknd16.nexus.ui.fx.nexusPress
+import com.eoinknd16.nexus.ui.fx.plainTap
 import com.eoinknd16.nexus.ui.fx.nexusShape
 import com.eoinknd16.nexus.ui.fx.rememberHaptics
 import com.eoinknd16.nexus.ui.theme.Nx
@@ -278,13 +279,13 @@ fun UniversalSearch(runner: TileRunner, onNavigate: (String) -> Unit) {
         exit = fadeOut() + slideOutVertically { -it / 12 },
     ) {
         Box(
-            Modifier.fillMaxSize().background(Nx.Void.copy(alpha = 0.72f)).nexusPress(::close),
+            Modifier.fillMaxSize().background(Nx.Void.copy(alpha = 0.72f)).plainTap(::close),
         ) {
             Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding().padding(horizontal = 14.dp)) {
                 // Search field
                 val shape = nexusShape(0.6f)
                 Row(
-                    Modifier.fillMaxWidth().padding(top = 10.dp).nexusPress({}).clip(shape).background(Nx.PanelSolid)
+                    Modifier.fillMaxWidth().padding(top = 10.dp).plainTap(null).clip(shape).background(Nx.PanelSolid)
                         .border(1.dp, Nx.Cyan, shape).padding(horizontal = 16.dp, vertical = 14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -446,7 +447,7 @@ private fun findContacts(context: android.content.Context, q: String): List<Cont
 
 @Composable
 private fun Group(title: String, content: @Composable () -> Unit) {
-    Column(Modifier.fillMaxWidth().nexusPress({}).holoPanel(Nx.Cyan, 0.05f).padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(Modifier.fillMaxWidth().plainTap(null).holoPanel(Nx.Cyan, 0.05f).padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(hud(title), style = MaterialTheme.typography.labelSmall, color = Nx.Muted)
         content()
     }
