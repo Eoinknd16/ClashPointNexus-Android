@@ -102,7 +102,9 @@ fun FolderPhysics(icons: List<ImageBitmap>, tile: TileConfig, modifier: Modifier
     val density = LocalDensity.current
     MotionSensors.Use()
     val haptics = remember { ImpactHaptics(context) }
-    val hapticsOn = tile.folderPhysicsHaptics && com.eoinknd16.nexus.look.LookState.look.motion.haptics
+    // The loop below runs for as long as the tile is on screen, so it reads the latest settings through these.
+    val tileNow by androidx.compose.runtime.rememberUpdatedState(tile)
+    val hapticsOn by androidx.compose.runtime.rememberUpdatedState(tile.folderPhysicsHaptics && com.eoinknd16.nexus.look.LookState.look.motion.haptics)
 
     var size by remember { androidx.compose.runtime.mutableStateOf(IntSize.Zero) }
     var tick by remember { mutableLongStateOf(0L) }
@@ -155,6 +157,7 @@ fun FolderPhysics(icons: List<ImageBitmap>, tile: TileConfig, modifier: Modifier
         var settledFrames = 0
         while (true) {
             withFrameNanos { now ->
+                val tile = tileNow
                 val dt = if (last == 0L) 1f / 60f else ((now - last) / 1e9f).coerceIn(1f / 240f, 1f / 30f)
                 last = now
                 val ppm = pxPerMeter * tile.folderPhysicsRealism.coerceIn(0.1f, 1f)
@@ -181,6 +184,7 @@ fun FolderPhysics(icons: List<ImageBitmap>, tile: TileConfig, modifier: Modifier
                 val tax = ((vx - prevVel[0]) / dt).coerceIn(-cap, cap) * inertia * 0.5f
                 val tay = ((vy - prevVel[1]) / dt).coerceIn(-cap, cap) * inertia * 0.5f
                 prevVel[0] = vx; prevVel[1] = vy
+                if (abs(tax) + abs(tay) > 2f * pxPerMeter) sim.wake()
 
                 val movedAny = sim.step(dt, fx * ppm - tax, fy * ppm - tay, normal * ppm, ppm)
                 if (hapticsOn && sim.hardestHit > 0f) haptics.hit(sim.hardestHit)
