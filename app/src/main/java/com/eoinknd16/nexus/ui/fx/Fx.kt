@@ -250,7 +250,9 @@ private fun rememberBackdropTime(): Float {
     LaunchedEffect(b.animated, b.fps, b.speed) {
         if (!b.animated) return@LaunchedEffect
         // 0 = every display frame (60/90/120Hz...), otherwise a cap.
-        val frameNs = if (b.fps <= 0) 0L else 1_000_000_000L / b.fps.coerceIn(10, 144)
+        // TV boxes: 30fps is plenty for a slow drift and keeps the stick cool.
+        val fps = if (b.fps <= 0 && TvMode.enabled) 30 else b.fps
+        val frameNs = if (fps <= 0) 0L else 1_000_000_000L / fps.coerceIn(10, 144)
         var last = 0L
         var prev = withFrameNanos { it }
         while (true) {
@@ -272,7 +274,7 @@ private fun ShaderBackdrop(shader: RuntimeShader, intensity: Float) {
     val time = rememberBackdropTime()
     val look = LookState.look
     val p = LookState.palette
-    val style = when (look.backdrop.style) {
+    val style = when (backdropStyle()) {
         BackdropStyle.Grid -> 0f
         BackdropStyle.Nebula -> 1f
         BackdropStyle.Stars -> 2f
@@ -301,9 +303,15 @@ private fun ShaderBackdrop(shader: RuntimeShader, intensity: Float) {
 @Composable
 private fun CanvasBackdrop(intensity: Float) {
     val t = rememberBackdropTime()
-    val style = LookState.look.backdrop.style
+    val style = backdropStyle()
     val a = Nx.Cyan
     val a2 = Nx.Magenta
+    // Starfield for devices without shader support (Fire TV is Android 11 at most):
+    // three depth layers drifting at different speeds, each star twinkling.
+    val stars = remember {
+        val r = kotlin.random.Random(7)
+        List(150) { floatArrayOf(r.nextFloat(), r.nextFloat(), r.nextInt(3).toFloat(), r.nextFloat() * 6.28f, 0.6f + r.nextFloat()) }
+    }
     Canvas(Modifier.fillMaxSize()) {
         val k = intensity.coerceIn(0f, 2f)
         drawRect(Brush.radialGradient(listOf(a.copy(alpha = 0.2f * k), Color.Transparent), Offset(size.width * 0.25f, size.height * 0.2f), size.width * 0.8f))
@@ -333,10 +341,40 @@ private fun CanvasBackdrop(intensity: Float) {
                     prev = pt
                 }
             }
+            BackdropStyle.Stars -> {
+                val unit = size.minDimension
+                for (st in stars) {
+                    val depth = st[2] // 0 far .. 2 near
+                    val speed = 0.004f + depth * 0.007f
+                    val x = ((st[0] - t * speed) % 1f + 1f) % 1f * size.width
+                    val y = st[1] * size.height
+                    val tw = 0.55f + 0.45f * sin(t * (0.8f + st[4]) + st[3])
+                    val radius = unit * (0.0016f + depth * 0.0011f) * st[4]
+                    val col = if (st[3] > 5.6f) a2 else if (st[3] > 4.4f) a else Color.White
+                    drawCircle(col.copy(alpha = (0.25f + depth * 0.22f) * tw * k.coerceAtMost(1.2f)), radius, Offset(x, y))
+                }
+                // An occasional shooting star (about every 11 s).
+                val cycle = 11f
+                val ph = (t % cycle) / 1.1f
+                if (ph < 1f) {
+                    val n = (t / cycle).toInt()
+                    val sx = size.width * (0.2f + ((n * 37) % 60) / 100f)
+                    val sy = size.height * (0.08f + ((n * 23) % 30) / 100f)
+                    val dx = size.width * 0.25f * ph
+                    val head = Offset(sx + dx, sy + dx * 0.35f)
+                    drawLine(
+                        Brush.linearGradient(listOf(Color.Transparent, Color.White.copy(alpha = 0.7f * (1 - ph) * k.coerceAtMost(1f))), Offset(head.x - unit * 0.12f, head.y - unit * 0.042f), head),
+                        Offset(head.x - unit * 0.12f, head.y - unit * 0.042f), head, 2f,
+                    )
+                }
+            }
             else -> {}
         }
     }
 }
+
+/** The backdrop style in use; the TV build always shows the starfield. */
+private fun backdropStyle(): BackdropStyle = if (TvMode.enabled) BackdropStyle.Stars else LookState.look.backdrop.style
 
 // ---------------------------------------------------------------------------
 // Shapes + holo panel, from Customise > Panels.
