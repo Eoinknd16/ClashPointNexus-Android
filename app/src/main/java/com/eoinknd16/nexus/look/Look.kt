@@ -298,6 +298,9 @@ sealed class HomeBlock {
         val apps: List<String> = emptyList(),
         val iconSizeDp: Float = 52f,
         val showLabels: Boolean = true,
+        /** Fill the row with suggested apps (by time of day and habit) instead of a fixed list. */
+        val suggested: Boolean = false,
+        val count: Int = 5,
     ) : HomeBlock()
 
     /** A real Android app widget (Google search bar, calendar, music...). */
@@ -632,6 +635,8 @@ data class DrawerStyle(
     val showSearch: Boolean = true,
     /** Pop the keyboard as soon as the drawer opens. */
     val autoFocusSearch: Boolean = false,
+    /** A row of suggested apps at the top of the drawer. */
+    val showSuggestions: Boolean = true,
 )
 
 @Serializable

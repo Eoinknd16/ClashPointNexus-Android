@@ -960,9 +960,14 @@ private fun PostersView(b: HomeBlock.Posters, vm: HomeViewModel, headings: Boole
 private fun AppRowView(b: HomeBlock.AppRow, runner: TileRunner, headings: Boolean, editMode: Boolean) {
     val c = appContainer()
     val apps by c.apps.apps.collectAsStateWithLifecycle()
-    val chosen = b.apps.mapNotNull { k -> apps.firstOrNull { it.key == k } }
+    val prefs by c.apps.prefs.state.collectAsStateWithLifecycle()
+    val chosen = if (b.suggested) remember(apps, prefs.usage) { c.apps.suggestions(b.count.coerceIn(1, 10)) }
+    else b.apps.mapNotNull { k -> apps.firstOrNull { it.key == k } }
     if (chosen.isEmpty()) {
-        if (editMode) Text("No apps chosen. Tap ⚙ to pick some.", color = Nx.Muted, style = MaterialTheme.typography.bodyMedium)
+        if (editMode) Text(
+            if (b.suggested) "Suggestions appear once you've opened a few apps from Nexus." else "No apps chosen. Tap ⚙ to pick some.",
+            color = Nx.Muted, style = MaterialTheme.typography.bodyMedium,
+        )
         return
     }
     Column {

@@ -317,8 +317,13 @@ private fun BlockEditor(block: HomeBlock, onDismiss: () -> Unit, onEdit: (HomeEd
                 TextRow("Heading", block.title) { set(block.copy(title = it)) }
                 SliderRow("Icon size", block.iconSizeDp, 32f..80f, { "${it.roundToInt()}dp" }) { set(block.copy(iconSizeDp = it)) }
                 ToggleRow("Labels", block.showLabels) { set(block.copy(showLabels = it)) }
-                HudLabel("Apps")
-                AppPicker(selected = block.apps, multi = true) { set(block.copy(apps = it)) }
+                ToggleRow("Suggest apps automatically", block.suggested, "Picks what you usually open around this time") { set(block.copy(suggested = it)) }
+                if (block.suggested) {
+                    SliderRow("How many", block.count.toFloat(), 1f..10f, { "${it.roundToInt()}" }) { set(block.copy(count = it.roundToInt())) }
+                } else {
+                    HudLabel("Apps")
+                    AppPicker(selected = block.apps, multi = true) { set(block.copy(apps = it)) }
+                }
             }
             is HomeBlock.Widget -> {
                 TextRow("Name", block.label) { set(block.copy(label = it)) }

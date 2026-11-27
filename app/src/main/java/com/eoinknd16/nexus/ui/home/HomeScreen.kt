@@ -172,6 +172,11 @@ fun HomeScreen() {
     // Leaving home (an app opened, the screen turned off) resets the drawer.
     LifecycleResumeEffect(drawer) { onPauseOrDispose { drawer.reset() } }
     val drawerOpen by remember { androidx.compose.runtime.derivedStateOf { drawer.isOpen } }
+    // Feel for the big moments: entering edit mode, changing page, opening a folder.
+    var firstPage by remember { mutableStateOf(true) }
+    LaunchedEffect(com.eoinknd16.nexus.look.HomePager.current) { if (firstPage) firstPage = false else haptics.tick() }
+    LaunchedEffect(editMode) { if (editMode) haptics.pickUp() }
+    LaunchedEffect(folder) { if (folder != null) haptics.thud() }
     val searchRecede by androidx.compose.animation.core.animateFloatAsState(
         if (UniversalSearchHub.open) 1f else 0f, androidx.compose.animation.core.tween(com.eoinknd16.nexus.ui.fx.nexusMs(260)), label = "searchRecede",
     )

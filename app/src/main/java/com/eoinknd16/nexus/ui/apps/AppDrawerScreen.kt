@@ -135,6 +135,25 @@ fun AppDrawerContent(
             }
         }
         if (drawer.showSearch) SearchField(query, { query = it }, focus, onGo = { visible.firstOrNull()?.let { repo.launch(it); onLaunched() } })
+        if (drawer.showSuggestions && query.isBlank()) {
+            val suggested = remember(apps, prefs.usage) { repo.suggestions(5) }
+            if (suggested.isNotEmpty()) {
+                Text("SUGGESTED", style = MaterialTheme.typography.labelSmall, color = Nx.Muted, modifier = Modifier.padding(start = 18.dp, top = 4.dp))
+                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    suggested.forEach { app ->
+                        Column(Modifier.weight(1f).nexusPress({ repo.launch(app); onLaunched() }), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Image(app.icon, null, Modifier.size(drawer.iconSizeDp.dp))
+                            if (drawer.showLabels) Text(
+                                app.label, style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp), color = Nx.Text,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center,
+                            )
+                        }
+                    }
+                }
+                Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(1.dp).background(Nx.CyanDim))
+                Spacer(Modifier.height(8.dp))
+            }
+        }
         Row(Modifier.fillMaxSize()) {
             LazyVerticalGrid(
                 state = gridState,

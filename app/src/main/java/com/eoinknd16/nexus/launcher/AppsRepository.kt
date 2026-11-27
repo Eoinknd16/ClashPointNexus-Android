@@ -44,6 +44,16 @@ data class LauncherPrefs(
     /** Component keys pinned to the home dock, in order. */
     val pinned: List<String> = emptyList(),
     val hidden: List<String> = emptyList(),
+    /** How often / when each app is opened through Nexus (for suggestions). Stays on the phone. */
+    val usage: Map<String, AppUsage> = emptyMap(),
+)
+
+@Serializable
+data class AppUsage(
+    val count: Int = 0,
+    /** Opens per hour of the day (24 buckets). */
+    val hours: List<Int> = List(24) { 0 },
+    val last: Long = 0,
 )
 
 /**
@@ -107,6 +117,7 @@ class AppsRepository(
 
     /** [bounds] = where the icon was on screen, for the opening animation. */
     fun launch(app: LaunchableApp, bounds: android.graphics.Rect? = null, options: android.os.Bundle? = null) {
+        recordLaunch(app.key)
         runCatching {
             launcherApps.startMainActivity(app.component, app.user, bounds, options)
         }.onFailure {
@@ -124,6 +135,46 @@ class AppsRepository(
         val intent = Intent(Intent.ACTION_DELETE, android.net.Uri.parse("package:${app.packageName}"))
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         runCatching { context.startActivity(intent) }
+    }
+
+    private fun recordLaunch(key: String) {
+        val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+        scope.launch {
+            runCatching {
+                prefs.update { p ->
+                    val u = p.usage[key] ?: AppUsage()
+                    val hours = u.hours.takeIf { it.size == 24 } ?: List(24) { 0 }
+                    val updated = u.copy(count = u.count + 1, hours = hours.mapIndexed { i, n -> if (i == hour) n + 1 else n }, last = System.currentTimeMillis())
+                    // Keep the list bounded: drop the least-used if it grows huge.
+                    val all = p.usage + (key to updated)
+                    p.copy(usage = if (all.size > 300) all.entries.sortedByDescending { it.value.count }.take(250).associate { it.toPair() } else all)
+                }
+            }
+        }
+    }
+
+    /**
+     * Apps you're likely to want right now: what you usually open around this
+     * hour, plus what you open most and most recently. Hidden apps never appear.
+     */
+    fun suggestions(max: Int = 5, exclude: Set<String> = emptySet()): List<LaunchableApp> {
+        val p = prefs.value
+        if (p.usage.isEmpty()) return emptyList()
+        val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+        val now = System.currentTimeMillis()
+        val byKey = _apps.value.associateBy { it.key }
+        return p.usage.entries
+            .filter { it.key in byKey && it.key !in p.hidden && it.key !in exclude }
+            .map { (k, u) ->
+                val h = u.hours.takeIf { it.size == 24 } ?: List(24) { 0 }
+                val near = h[hour] * 3.0 + h[(hour + 23) % 24] * 1.5 + h[(hour + 1) % 24] * 1.5
+                val hoursAgo = (now - u.last) / 3_600_000.0
+                val recency = 4.0 / (1.0 + hoursAgo / 6.0)
+                k to (near + kotlin.math.ln(1.0 + u.count) * 2 + recency)
+            }
+            .sortedByDescending { it.second }
+            .take(max)
+            .mapNotNull { byKey[it.first] }
     }
 
     /**

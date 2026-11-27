@@ -307,6 +307,7 @@ fun CustomizeScreen() {
                     SliderRow("Columns (0 = auto)", d.columns.toFloat(), 0f..7f, { if (it < 0.5f) "auto" else it.roundToInt().toString() }, steps = 6) { v -> edit { it.copy(drawer = d.copy(columns = v.roundToInt())) } }
                     SliderRow("Icon size", d.iconSizeDp, 32f..80f, { "${it.roundToInt()}dp" }) { v -> edit { it.copy(drawer = d.copy(iconSizeDp = v)) } }
                     ToggleRow("Labels", d.showLabels) { v -> edit { it.copy(drawer = d.copy(showLabels = v)) } }
+                    ToggleRow("Suggested apps row", d.showSuggestions, "Based on what you open around this time of day") { v -> edit { it.copy(drawer = d.copy(showSuggestions = v)) } }
                     ToggleRow("Search box", d.showSearch) { v -> edit { it.copy(drawer = d.copy(showSearch = v)) } }
                     ToggleRow("Open keyboard straight away", d.autoFocusSearch) { v -> edit { it.copy(drawer = d.copy(autoFocusSearch = v)) } }
                 }

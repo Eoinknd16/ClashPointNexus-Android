@@ -120,4 +120,5 @@ val addableBlocks: List<Pair<String, () -> HomeBlock>> = listOf(
     "App row" to { HomeBlock.AppRow() },
     "Text" to { HomeBlock.Text() },
     "Spacer" to { HomeBlock.Spacer() },
+    "Suggested apps" to { HomeBlock.AppRow(title = "Suggested", suggested = true) },
 )
