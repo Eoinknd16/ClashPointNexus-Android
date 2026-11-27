@@ -273,13 +273,51 @@ fun UniversalSearch(runner: TileRunner, onNavigate: (String) -> Unit) {
         }
     }
 
-    fun runTop() {
-        when {
-            cmdHits.isNotEmpty() && (appHits.isEmpty() || fuzzyScore(cmdHits.first().label, q) >= fuzzyScore(appHits.first().label, q)) -> { cmdHits.first().run(); close() }
-            topApp != null -> { c.apps.launch(topApp); close() }
-            q.isNotEmpty() -> { runner.webSearch(q); close() }
+    /**
+     * Works out what a typed request means without any AI: "open spotify",
+     * "wake pc", "go to page 2", "spotify and wake pc"... Returns what to do
+     * and a description, or null if any part isn't understood.
+     */
+    fun localPlan(text: String): List<Pair<String, () -> Unit>>? {
+        val parts = text.lowercase().split(Regex("\\s+(?:and|then|&)\\s+|,\\s*")).map { it.trim() }.filter { it.isNotEmpty() }
+        if (parts.isEmpty()) return null
+        val allCmds = commands + LookState.look.home.pages.map { p -> Command("Go to ${p.name}", "page ${p.name}", Icons.Filled.ViewCarousel) { HomePager.go(p.id) } }
+        return parts.map { part ->
+            val stripped = part.replace(Regex("^(please\\s+)?(open|launch|start|run|go to|show|switch to)\\s+"), "").trim()
+            val cmd = allCmds.map { it to maxOf(fuzzyScore(it.label, part), fuzzyScore(it.label, stripped)) }.filter { it.second >= 600 }.maxByOrNull { it.second }?.first
+            val app = apps.map { it to fuzzyScore(it.label, stripped) }.filter { it.second >= 500 }.maxByOrNull { it.second }?.first
+            when {
+                cmd != null && (app == null || fuzzyScore(cmd.label, part) >= fuzzyScore(app.label, stripped)) -> cmd.label to cmd.run
+                app != null -> "Open ${app.label}" to { c.apps.launch(app) }
+                else -> return null
+            }
         }
     }
+
+    /** Sounds like an instruction rather than something to look up. */
+    fun soundsLikeRequest(text: String): Boolean {
+        val t = text.lowercase().trim()
+        val verbs = listOf("open", "launch", "start", "run", "wake", "turn", "switch", "go to", "shut", "sleep", "restart", "lock", "play", "show", "put", "set", "take me", "nexus")
+        return verbs.any { t.startsWith(it) } || t.contains(" and ")
+    }
+
+    /**
+     * Enter: do the command if it's one Nexus understands (no AI needed), ask
+     * the AI if it sounds like an instruction, open a clearly-matching app,
+     * and only otherwise search the web.
+     */
+    fun runTop() {
+        if (q.isEmpty()) return
+        val plan = localPlan(q)
+        when {
+            plan != null -> { haptics.click(); plan.forEach { it.second() }; close() }
+            aiOn && soundsLikeRequest(q) -> askAi()
+            topApp != null && fuzzyScore(topApp.label, q) >= 600 -> { c.apps.launch(topApp); close() }
+            cmdHits.isNotEmpty() && fuzzyScore(cmdHits.first().label, q) >= 600 -> { cmdHits.first().run(); close() }
+            else -> { runner.webSearch(q); close() }
+        }
+    }
+    val plan = remember(q, apps) { if (q.length >= 3) localPlan(q) else null }
 
     AnimatedVisibility(
         visible = open,
@@ -328,7 +366,14 @@ fun UniversalSearch(runner: TileRunner, onNavigate: (String) -> Unit) {
                             Group("Your apps") { AppRow(dock) { c.apps.launch(it); close() } }
                         }
                     }
-                    if (aiOn && q.length >= 3) {
+                    plan?.let { steps ->
+                        Group("Enter will") {
+                            ResultRow(Icons.Filled.AutoAwesome, steps.joinToString(" · ") { it.first }, "Press Enter or tap", accent = Nx.Lime) {
+                                haptics.click(); steps.forEach { it.second() }; close()
+                            }
+                        }
+                    }
+                    if (aiOn && q.length >= 3 && plan == null) {
                         Group("Ask Nexus") {
                             ResultRow(Icons.Filled.AutoAwesome, if (aiBusy) "Thinking…" else "Ask: “$q”", if (aiText == null) (if (aiPrefs.engine == "claude") "Claude" else "On-device AI") + " · opens apps, controls the PC, switches pages…" else null, accent = Nx.Magenta) { askAi() }
                             aiText?.let { t -> Text(t, style = MaterialTheme.typography.bodyLarge, color = Nx.Text, modifier = Modifier.padding(vertical = 4.dp)) }
@@ -399,7 +444,7 @@ fun UniversalSearch(runner: TileRunner, onNavigate: (String) -> Unit) {
                     }
                     if (q.isNotEmpty()) {
                         Group("Web") {
-                            ResultRow(Icons.Filled.Public, "Search for “$q”", null) { runner.webSearch(q); close() }
+                            ResultRow(Icons.Filled.Public, "Search the web for “$q”", null) { runner.webSearch(q); close() }
                             suggestions.forEach { s -> ResultRow(Icons.Filled.Search, s, null, accent = Nx.Muted) { runner.webSearch(s); close() } }
                         }
                     }
