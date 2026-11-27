@@ -620,6 +620,8 @@ data class TileConfig(
     /** How many columns / rows of its grid this tile covers. */
     val colSpan: Int = 1,
     val rowSpan: Int = 1,
+    /** This tile's own style; null = the default tile style (HomeLayout.tileSkin). */
+    val skin: TileSkin? = null,
 )
 
 @Serializable
@@ -679,6 +681,8 @@ data class HomePage(
 
 @Serializable
 data class HomeLayout(
+    /** How every tile looks unless it has its own style. */
+    val tileSkin: TileSkin = TileSkin(),
     val fit: FitMode = FitMode.Auto,
     /** Auto-fit kicks in when the overflow is at most this fraction of the screen. */
     val fitTolerance: Float = 0.25f,

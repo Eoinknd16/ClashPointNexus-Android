@@ -144,6 +144,7 @@ import com.eoinknd16.nexus.look.DockArrange
 import com.eoinknd16.nexus.look.HomeBlock
 import com.eoinknd16.nexus.look.IconCatalog
 import com.eoinknd16.nexus.look.LookState
+import com.eoinknd16.nexus.look.effectiveSkin
 import com.eoinknd16.nexus.look.PosterSource
 import com.eoinknd16.nexus.look.TempUnit
 import com.eoinknd16.nexus.look.TileAction
@@ -710,6 +711,8 @@ fun TileView(
             0.25f, 0.55f, infiniteRepeatable(tween(2400), RepeatMode.Reverse), label = "glow",
         ).value
     } else 0.35f
+    val skin = tile.effectiveSkin(LookState.look.home)
+    val appColour = rememberIconColour(tileApp?.icon, skin.fill == com.eoinknd16.nexus.look.SkinFill.AppColour)
     Box(
         modifier
             .then(entrance)
@@ -723,25 +726,30 @@ fun TileView(
                     // Apps get their shortcuts menu; everything else (and edit mode) goes straight to the editor.
                     if (!editMode && tileApp != null && LookState.look.home.appQuickMenus) quickMenu = true else onLongPress()
                 },
+                press = skin.press,
             )
-            .holoPanel(accent, pulse, tile.border),
+            .tileSkin(skin, accent, tile.border, pulse, appColour),
     ) {
         NotificationDot(dots, size = 12.dp, inset = 10.dp)
         if (quickMenu) AppQuickMenu(tileApp, appActions(tileApp, onEdit = onLongPress, onRemove = null, c = c)) { quickMenu = false }
         tile.image?.takeIf { it.isNotBlank() }?.let {
             AsyncImage(it, null, contentScale = ContentScale.Crop, modifier = Modifier.matchParentSize().alpha(0.45f))
         }
-        val titleStyle = MaterialTheme.typography.titleMedium.let { it.copy(fontSize = it.fontSize * style.labelScale.coerceIn(0.5f, 2.5f)) }
-        val subStyle = MaterialTheme.typography.labelSmall.let { it.copy(fontSize = it.fontSize * style.labelScale.coerceIn(0.5f, 2.5f)) }
+        val labelScale = (style.labelScale * skin.labelScale).coerceIn(0.4f, 3f)
+        val titleStyle = MaterialTheme.typography.titleMedium.let { it.copy(fontSize = it.fontSize * labelScale) }
+            .skinned(skin, skinColour(skin.labelColor, accent))
+        val subStyle = MaterialTheme.typography.labelSmall.let { it.copy(fontSize = it.fontSize * labelScale) }
+            .skinned(skin, skinColour(skin.subColor, accent), weight = 500)
+        val showLabel = skin.showLabel && tile.label.isNotBlank()
+        val showSub = showSublabel && skin.showSublabel && tile.sublabel.isNotBlank()
         val texts: @Composable (Alignment.Horizontal) -> Unit = { h ->
-            Column(horizontalAlignment = h) {
-                Text(tile.label, style = titleStyle, color = Nx.Text, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (showSublabel && tile.sublabel.isNotBlank()) {
-                    Text(hud(tile.sublabel), style = subStyle, color = Nx.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
+            if (showLabel || showSub) Column(horizontalAlignment = h) {
+                if (showLabel) Text(skinCase(tile.label, skin.case), style = titleStyle, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (showSub) Text(skinCase(hud(tile.sublabel), skin.case), style = subStyle, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
-        val pad = Modifier.matchParentSize().padding(style.padding.coerceIn(0.dp, 40.dp))
+        val padding = if (skin.padding >= 0f) skin.padding.dp else style.padding
+        val pad = Modifier.matchParentSize().padding(padding.coerceIn(0.dp, 40.dp))
         // Folders can fill the whole tile with their apps instead of a small preview.
         if (tile.isFolder() && tile.folderTileStyle != com.eoinknd16.nexus.look.FolderTileStyle.Icon) {
             val apps by appContainer().apps.apps.collectAsStateWithLifecycle()
@@ -749,32 +757,59 @@ fun TileView(
             FolderTileContent(tile, icons, showLabel = true, modifier = pad)
             return@Box
         }
-        when (style.layout) {
+        val iconSize = style.iconSize * skin.iconScale.coerceIn(0.3f, 3f)
+        val iconTint = skinColour(skin.iconColor, accent)
+        val icon: @Composable () -> Unit = {
+            SkinIconFrame(skin, accent, iconSize) { TileIcon(tile, runner, iconTint, iconSize, iconFilter(skin, iconTint)) }
+        }
+        // "Oversized" icon: big and bleeding off the bottom-right corner, behind the text.
+        if (skin.iconStyle == com.eoinknd16.nexus.look.SkinIconStyle.Big) {
+            Box(Modifier.matchParentSize()) {
+                Box(Modifier.align(Alignment.BottomEnd).offset(x = iconSize * 0.45f, y = iconSize * 0.35f).alpha(0.9f)) {
+                    TileIcon(tile, runner, iconTint, iconSize * 2.2f, null)
+                }
+            }
+            Box(pad, contentAlignment = Alignment.TopStart) { texts(Alignment.Start) }
+            return@Box
+        }
+        val layout = skin.layout ?: style.layout
+        if (skin.iconPos != com.eoinknd16.nexus.look.SkinIconPos.Auto && layout != com.eoinknd16.nexus.look.TileLayout.IconOnly) {
+            val (iconAlign, textAlign, h) = when (skin.iconPos) {
+                com.eoinknd16.nexus.look.SkinIconPos.TopStart -> Triple(Alignment.TopStart, Alignment.BottomStart, Alignment.Start)
+                com.eoinknd16.nexus.look.SkinIconPos.TopEnd -> Triple(Alignment.TopEnd, Alignment.BottomStart, Alignment.Start)
+                com.eoinknd16.nexus.look.SkinIconPos.BottomEnd -> Triple(Alignment.BottomEnd, Alignment.TopStart, Alignment.Start)
+                else -> Triple(Alignment.Center, Alignment.BottomCenter, Alignment.CenterHorizontally)
+            }
+            Box(pad) {
+                Box(Modifier.align(iconAlign)) { icon() }
+                Box(Modifier.align(textAlign)) { texts(h) }
+            }
+            return@Box
+        }
+        when (layout) {
             com.eoinknd16.nexus.look.TileLayout.Stack -> Column(pad) {
-                TileIcon(tile, runner, accent, style.iconSize)
+                icon()
                 Spacer(Modifier.weight(1f))
                 texts(Alignment.Start)
             }
             com.eoinknd16.nexus.look.TileLayout.Centered -> Column(pad, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                TileIcon(tile, runner, accent, style.iconSize)
+                icon()
                 Spacer(Modifier.height(8.dp))
                 texts(Alignment.CenterHorizontally)
             }
             com.eoinknd16.nexus.look.TileLayout.Inline -> Row(pad, verticalAlignment = Alignment.CenterVertically) {
-                TileIcon(tile, runner, accent, style.iconSize)
+                icon()
                 Spacer(Modifier.width(12.dp))
                 Box(Modifier.weight(1f)) { texts(Alignment.Start) }
             }
-            com.eoinknd16.nexus.look.TileLayout.IconOnly -> Box(pad, contentAlignment = Alignment.Center) {
-                TileIcon(tile, runner, accent, style.iconSize)
-            }
+            com.eoinknd16.nexus.look.TileLayout.IconOnly -> Box(pad, contentAlignment = Alignment.Center) { icon() }
         }
     }
 }
 
 /** The icon slot of a tile/dock item: app icon, folder preview, or a catalog icon. */
 @Composable
-fun TileIcon(tile: TileConfig, runner: TileRunner, accent: Color, size: androidx.compose.ui.unit.Dp) {
+fun TileIcon(tile: TileConfig, runner: TileRunner, accent: Color, size: androidx.compose.ui.unit.Dp, filter: androidx.compose.ui.graphics.ColorFilter? = null) {
     val apps by appContainer().apps.apps.collectAsStateWithLifecycle()
     val shape = nexusShape(0.45f)
     when {
@@ -802,7 +837,7 @@ fun TileIcon(tile: TileConfig, runner: TileRunner, accent: Color, size: androidx
         // an update or cold start.
         tile.action.kind == com.eoinknd16.nexus.look.TileAction.Kind.LaunchApp && tile.useAppIcon &&
             apps.firstOrNull { it.key == tile.action.arg }?.icon != null ->
-            Image(apps.first { it.key == tile.action.arg }.icon!!, null, Modifier.size(size))
+            Image(apps.first { it.key == tile.action.arg }.icon!!, null, Modifier.size(size), colorFilter = filter)
         else -> Box(
             Modifier.size(size).clip(shape).background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(accent.copy(alpha = 0.35f), accent.copy(alpha = 0.05f)))),
             contentAlignment = Alignment.Center,

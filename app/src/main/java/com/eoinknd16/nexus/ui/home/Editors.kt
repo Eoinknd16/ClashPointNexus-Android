@@ -407,7 +407,7 @@ private fun TileEditor(blockId: String?, existing: TileConfig?, onDismiss: () ->
         add("Does")
         if (isFolder) add("Folder")
         add("Look")
-        add("Border")
+        add("Style")
         if (blockId != null) add("Size")
     }
     var tabName by remember { mutableStateOf("Does") }
@@ -549,7 +549,7 @@ private fun TileEditor(blockId: String?, existing: TileConfig?, onDismiss: () ->
                         { if (it < 100f) "Auto (fits the apps)" else "${it.roundToInt()}dp across" },
                     ) { t = t.copy(folderRingSize = if (it < 100f) 0f else it) }
                     Text(
-                        "Auto makes the ring just big enough that no apps overlap. Too many for one ring on screen? The rest go on an inner ring.",
+                        "Auto makes one ring just big enough for all the apps. If it would be wider than the screen, the icons shrink to fit, so they never overlap. Only very full folders get a second ring.",
                         style = MaterialTheme.typography.bodySmall, color = Nx.Muted,
                     )
                 }
@@ -619,19 +619,7 @@ private fun TileEditor(blockId: String?, existing: TileConfig?, onDismiss: () ->
         ) { v -> t = t.copy(entrance = if (v == inheritE) null else com.eoinknd16.nexus.look.Entrance.valueOf(v)) }
         TextRow("Background image URL (optional)", t.image ?: "", "https://…/image.jpg", KeyboardType.Uri) { t = t.copy(image = it.ifBlank { null }) }
         }
-        "Border" -> {
-        val inheritE = "inherit"
-        Hint("Overrides the border for this tile only. Everything else follows Customise › Panels & borders.")
-        val b = t.border ?: com.eoinknd16.nexus.look.BorderOverride()
-        ChoiceRow(
-            "Style", listOf(inheritE) + com.eoinknd16.nexus.look.BorderStyle.entries.map { it.name },
-            b.style?.name ?: inheritE, { if (it == inheritE) "Same as everywhere" else com.eoinknd16.nexus.look.BorderStyle.valueOf(it).label },
-        ) { v -> t = t.copy(border = b.copy(style = if (v == inheritE) null else com.eoinknd16.nexus.look.BorderStyle.valueOf(v))) }
-        SliderRow("Width", b.width ?: LookState.look.shape.borderWidth, 0f..5f, { "%.1fdp".format(it) }) { v -> t = t.copy(border = b.copy(width = v)) }
-        SliderRow("Glow", b.glow ?: LookState.look.shape.glow, 0f..1.5f, { "${(it * 100).toInt()}%" }) { v -> t = t.copy(border = b.copy(glow = v)) }
-        ColorRow("Border colour", b.color?.takeIf { it.startsWith("#") } ?: LookState.palette.slot(t.color).toHex()) { v -> t = t.copy(border = b.copy(color = v)) }
-        if (t.border != null) NexusButton("Reset border to default", accent = Nx.Muted) { t = t.copy(border = null) }
-        }
+        "Style" -> TileStyleEditor(t, runner) { t = it }
         "Size" -> if (blockId != null) {
             val cols = (LookState.look.allBlocks.firstOrNull { it.id == blockId } as? HomeBlock.Tiles)?.columns?.coerceIn(1, 6) ?: 4
             HudLabel("Size in the grid")

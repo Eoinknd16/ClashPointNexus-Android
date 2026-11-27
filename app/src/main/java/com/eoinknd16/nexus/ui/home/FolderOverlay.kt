@@ -278,40 +278,16 @@ private fun FolderApp(app: LaunchableApp, tile: TileConfig, delayIndex: Int, ani
  */
 @Composable
 private fun RingLayout(apps: List<LaunchableApp>, accent: Color, tile: TileConfig, spread: Float, onLaunch: (LaunchableApp) -> Unit) {
-    val iconSize = tile.folderIconSize.coerceIn(32f, 96f)
-    val cell = iconSize + 22f // one app's footprint around the ring, dp
-    val gap = 1.12f
     BoxWithConstraints(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
         val density = LocalDensity.current
-        // Biggest radius that keeps every icon on screen.
-        val maxR = (maxWidth.value / 2 - cell / 2 - 8f).coerceAtLeast(cell)
-        val n = apps.size.coerceAtLeast(1)
-        // Radius needed so n apps sit around the ring without touching.
-        val needed = n * cell * gap / (2 * PI.toFloat())
-        val wanted = if (tile.folderRingSize > 0f) tile.folderRingSize / 2 - iconSize / 2 else maxOf(needed, iconSize * 1.6f)
-        val outerR = wanted.coerceIn(cell * 0.9f, maxR)
-        // Split into rings, outermost first, until everyone has a spot.
-        val rings = mutableListOf<Pair<Float, Int>>() // radius dp to how many apps
-        var left = n
-        var r = outerR
-        while (left > 0) {
-            val capacity = if (r < cell * 0.6f) left else maxOf(1, (2 * PI.toFloat() * r / (cell * gap)).toInt())
-            val take = minOf(left, capacity)
-            rings += r to take
-            left -= take
-            r -= cell * 1.15f
-        }
-        // Balance two rings so the outer one isn't crammed and the inner one sparse.
-        if (rings.size == 2) {
-            val (r1, _) = rings[0]; val (r2, _) = rings[1]
-            val c1 = (n * r1 / (r1 + r2)).roundToInt().coerceAtMost(maxOf(1, (2 * PI.toFloat() * r1 / (cell * gap)).toInt()))
-            rings[0] = r1 to c1; rings[1] = r2 to (n - c1)
-        }
-        val boxSize = (outerR * 2 + cell + 24f).dp
+        val plan = planRings(apps.size, tile.folderIconSize.coerceIn(32f, 96f), tile.folderShowLabels, tile.folderRingSize, maxWidth.value)
+        val iconSize = plan.iconSize
+        val cell = plan.cell
+        val boxSize = (plan.rings.first().first * 2 + cell + 24f).dp
         Box(Modifier.size(boxSize), contentAlignment = Alignment.Center) {
             if (tile.folderBackground != FolderBackground.None) Box(Modifier.size(56.dp).holoPanel(accent, 0.8f))
             var index = 0
-            rings.forEachIndexed { ringNo, (radius, count) ->
+            plan.rings.forEachIndexed { ringNo, (radius, count) ->
                 val radiusPx = with(density) { radius.dp.toPx() }
                 // Stagger alternate rings so icons don't line up spoke-like.
                 val offset = if (ringNo % 2 == 1) PI / count else 0.0
@@ -341,6 +317,49 @@ private fun RingLayout(apps: List<LaunchableApp>, accent: Color, tile: TileConfi
     }
 }
 
+/** How the ring(s) are laid out: icon size actually used, each app's footprint, and (radius, count) per ring, outermost first. */
+internal data class RingPlan(val iconSize: Float, val cell: Float, val rings: List<Pair<Float, Int>>)
+
+/**
+ * Fits [n] apps around a ring without any two touching, ever:
+ *  - Auto ([sizeDp] = 0): one ring just big enough for them. If that would be
+ *    wider than the screen, the icons shrink until they fit on one ring.
+ *  - A set size: that ring; if the apps don't fit around it, icons shrink.
+ *  - Only very full folders (icons would get tiny) spill onto inner rings,
+ *    and only rings with real room for their share.
+ */
+internal fun planRings(n: Int, wantedIcon: Float, labels: Boolean, sizeDp: Float, widthDp: Float): RingPlan {
+    val count = n.coerceAtLeast(1)
+    val pad = if (labels) 22f else 10f
+    val gap = 1.12f
+    val minIcon = 30f
+    val twoPi = (2 * PI).toFloat()
+    var icon = wantedIcon
+    while (true) {
+        val cell = icon + pad
+        val maxR = (widthDp / 2 - cell / 2 - 8f).coerceAtLeast(cell)
+        val needR = count * cell * gap / twoPi
+        val r = if (sizeDp > 0f) (sizeDp / 2 - icon / 2).coerceIn(cell * 0.75f, maxR) else maxOf(needR, cell * 1.3f).coerceAtMost(maxR)
+        // One ring fits?
+        if (count * cell * gap <= twoPi * r + 0.01f) return RingPlan(icon, cell, listOf(r to count))
+        // Icons can still shrink: try again smaller.
+        if (icon > minIcon) { icon = maxOf(minIcon, icon * 0.92f); continue }
+        // Tiny icons and still too many: inner rings, each with room for its share.
+        val rings = mutableListOf<Pair<Float, Int>>()
+        var left = count
+        var rr = r
+        while (left > 0 && rr >= cell * 1.05f) {
+            val cap = (twoPi * rr / (cell * gap)).toInt().coerceAtLeast(1)
+            val take = minOf(left, cap)
+            rings += rr to take
+            left -= take
+            rr -= cell * 1.1f
+        }
+        if (left == 0) return RingPlan(icon, cell, rings)
+        // Absolute last resort (dozens of apps on a small screen): share the outer ring evenly.
+        return RingPlan(icon, cell, listOf(r to count))
+    }
+}
 
 /**
  * Places the folder exactly: centred, centred on the tapped tile's height, or

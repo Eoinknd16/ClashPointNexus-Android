@@ -210,7 +210,10 @@ object Tilt {
 @Composable
 fun TiltSensor() {
     val m = LookState.look.motion
-    if (!m.parallax && !m.sheen) return
+    val look = LookState.look
+    val tiltTiles = look.home.tileSkin.tilt3d ||
+        (look.home.blocks + look.home.pages.flatMap { it.blocks }).any { b -> b is com.eoinknd16.nexus.look.HomeBlock.Tiles && b.tiles.any { it.skin?.tilt3d == true } }
+    if (!m.parallax && !m.sheen && !tiltTiles) return
     val context = androidx.compose.ui.platform.LocalContext.current
     androidx.lifecycle.compose.LifecycleResumeEffect(Unit) {
         val sm = context.getSystemService(android.hardware.SensorManager::class.java)
@@ -409,7 +412,9 @@ fun NeonClockDriver() {
     val look = LookState.look
     val needed = look.motion.animations && (look.shape.borderStyle == BorderStyle.Neon ||
         (look.home.blocks + look.home.pages.flatMap { it.blocks }).any { b -> b is com.eoinknd16.nexus.look.HomeBlock.Tiles && b.tiles.any { it.border?.style == BorderStyle.Neon } } ||
-        look.home.dock.items.any { it.border?.style == BorderStyle.Neon })
+        look.home.dock.items.any { it.border?.style == BorderStyle.Neon } ||
+        look.home.tileSkin.animated ||
+        (look.home.blocks + look.home.pages.flatMap { it.blocks }).any { b -> b is com.eoinknd16.nexus.look.HomeBlock.Tiles && b.tiles.any { it.skin?.animated == true } })
     LaunchedEffect(needed, look.motion.speed) {
         if (!needed) return@LaunchedEffect
         var prev = withFrameNanos { it }
@@ -427,10 +432,10 @@ fun NeonClockDriver() {
  * the border styles (Customise › Panels, or per tile via [override]).
  * Glow is drawn before the clip so it can spill outside the panel.
  */
-fun Modifier.holoPanel(accent: Color = Nx.Cyan, glow: Float = 0.35f, override: BorderOverride? = null): Modifier {
+fun Modifier.holoPanel(accent: Color = Nx.Cyan, glow: Float = 0.35f, override: BorderOverride? = null, shapeOverride: Shape? = null): Modifier {
     val s = LookState.look.shape
     val p = LookState.palette
-    val shape = nexusShape()
+    val shape = shapeOverride ?: nexusShape()
     val style = override?.style ?: if (!s.gradientBorder && s.borderStyle == BorderStyle.Gradient) BorderStyle.Solid else s.borderStyle
     val width = (override?.width ?: s.borderWidth).coerceAtLeast(0f)
     val rimColor = override?.color?.let { p.slot(it) } ?: if (s.borderColor == "accent") accent else p.slot(s.borderColor)
@@ -556,16 +561,29 @@ fun Modifier.plainTap(onTap: (() -> Unit)?): Modifier = pointerInput(onTap) {
 }
 
 @Composable
-fun Modifier.nexusPress(onClick: () -> Unit, onLongClick: (() -> Unit)? = null): Modifier {
+fun Modifier.nexusPress(
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
+    press: com.eoinknd16.nexus.look.SkinPress = com.eoinknd16.nexus.look.SkinPress.Squish,
+): Modifier {
     val haptics = LocalHapticFeedback.current
     val motion = LookState.look.motion
     var pressed by remember { mutableStateOf(false) }
-    val target = if (pressed) motion.pressScale.coerceIn(0.8f, 1f) else 1f
-    val scale by animateFloatAsState(
-        target,
+    val p by animateFloatAsState(
+        if (pressed) 1f else 0f,
         if (motion.animations) nexusSpring() else snap(),
         label = "press",
     )
+    val squish = motion.pressScale.coerceIn(0.8f, 1f)
+    val pressLayer = Modifier.graphicsLayer {
+        when (press) {
+            com.eoinknd16.nexus.look.SkinPress.Squish -> { scaleX = 1f - (1f - squish) * p; scaleY = scaleX }
+            com.eoinknd16.nexus.look.SkinPress.Sink -> { scaleX = 1f - 0.04f * p; scaleY = scaleX; translationY = 3.dp.toPx() * p; alpha = 1f - 0.12f * p }
+            com.eoinknd16.nexus.look.SkinPress.Pop -> { scaleX = 1f + 0.06f * p; scaleY = scaleX }
+            com.eoinknd16.nexus.look.SkinPress.Tilt -> { rotationX = 14f * p; scaleX = 1f - 0.03f * p; scaleY = scaleX; cameraDistance = 10f * density }
+            com.eoinknd16.nexus.look.SkinPress.None -> {}
+        }
+    }
     // Fire TV / remotes: focusable, a glowing ring + lift when focused,
     // OK/Enter to click and Menu for the long-press action.
     val tvFocus = if (TvMode.enabled) {
@@ -595,7 +613,7 @@ fun Modifier.nexusPress(onClick: () -> Unit, onLongClick: (() -> Unit)? = null):
     } else Modifier
     return this
         .then(tvFocus)
-        .scale(scale)
+        .then(pressLayer)
         .pointerInput(onClick, onLongClick, motion.haptics) {
             detectTapGestures(
                 onPress = {
