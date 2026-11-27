@@ -354,6 +354,13 @@ private fun BlockEditor(block: HomeBlock, onDismiss: () -> Unit, onEdit: (HomeEd
                 SliderRow("Most lines shown", block.maxLines.toFloat(), 1f..6f, { "${it.roundToInt()}" }) { set(block.copy(maxLines = it.roundToInt())) }
                 ToggleRow("Inside a panel", block.framed) { set(block.copy(framed = it)) }
             }
+            is HomeBlock.Liquid -> {
+                SliderRow("Height", block.heightDp, 60f..260f, { "${it.roundToInt()}dp" }) { set(block.copy(heightDp = it)) }
+                SliderRow("Wobble", block.wobble, 0f..1f, { if (it < 0.15f) "Honey" else if (it > 0.85f) "Water" else "${(it * 100).roundToInt()}%" }) { set(block.copy(wobble = it)) }
+                ToggleRow("Show the percentage", block.showPercent) { set(block.copy(showPercent = it)) }
+                ToggleRow("Colour by level", block.colourByLevel, "Green when full, amber when low, red when nearly empty") { set(block.copy(colourByLevel = it)) }
+                ToggleRow("Inside a panel", block.framed) { set(block.copy(framed = it)) }
+            }
         }
     }
 }
@@ -514,6 +521,11 @@ private fun TileEditor(blockId: String?, existing: TileConfig?, onDismiss: () ->
                     SliderRow("Bounciness", t.folderPhysicsBounce, 0f..1f, { "${(it * 100).roundToInt()}%" }) { t = t.copy(folderPhysicsBounce = it) }
                     ToggleRow("Tilt the phone to move them", t.folderPhysicsTilt) { t = t.copy(folderPhysicsTilt = it) }
                     SliderRow("React to the screen moving", t.folderPhysicsInertia, 0f..3f, { if (it < 0.05f) "Off" else "${(it * 100).roundToInt()}%" }) { t = t.copy(folderPhysicsInertia = it) }
+                    SliderRow("Weight", t.folderPhysicsRealism, 0.1f..1f, { if (it >= 0.98f) "Real-life" else if (it < 0.3f) "Floaty" else "${(it * 100).roundToInt()}%" }) { t = t.copy(folderPhysicsRealism = it) }
+                    SliderRow("Shaking the phone throws them", t.folderPhysicsShake, 0f..3f, { if (it < 0.05f) "Off" else "${(it * 100).roundToInt()}%" }) { t = t.copy(folderPhysicsShake = it) }
+                    SliderRow("Grip on the glass", t.folderPhysicsGrip, 0f..2f, { when { it < 0.1f -> "Ice"; it in 0.9f..1.1f -> "Real"; else -> "${(it * 100).roundToInt()}%" } }) { t = t.copy(folderPhysicsGrip = it) }
+                    ToggleRow("Spin when they hit things", t.folderPhysicsSpin) { t = t.copy(folderPhysicsSpin = it) }
+                    ToggleRow("Buzz when they knock together", t.folderPhysicsHaptics) { t = t.copy(folderPhysicsHaptics = it) }
                 }
                 Spacer(Modifier.height(8.dp))
                 HudLabel("When it opens")
@@ -545,6 +557,8 @@ private fun TileEditor(blockId: String?, existing: TileConfig?, onDismiss: () ->
                         folderShowEditButton = src.folderShowEditButton,
                         folderTileStyle = src.folderTileStyle, folderTileIconScale = src.folderTileIconScale, folderTileLabel = src.folderTileLabel,
                         folderPhysicsBounce = src.folderPhysicsBounce, folderPhysicsTilt = src.folderPhysicsTilt, folderPhysicsInertia = src.folderPhysicsInertia,
+                        folderPhysicsRealism = src.folderPhysicsRealism, folderPhysicsShake = src.folderPhysicsShake, folderPhysicsGrip = src.folderPhysicsGrip,
+                        folderPhysicsSpin = src.folderPhysicsSpin, folderPhysicsHaptics = src.folderPhysicsHaptics,
                     )
                     c.editLook("Style copied to every folder") { l0 ->
                         val l = l0.mapAllBlocks { list -> list.map { b -> if (b is HomeBlock.Tiles) b.copy(tiles = b.tiles.map { it.styled() }) else b } }

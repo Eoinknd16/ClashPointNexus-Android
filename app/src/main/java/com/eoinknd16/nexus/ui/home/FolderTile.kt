@@ -35,6 +35,11 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.eoinknd16.nexus.look.TileConfig
+import com.eoinknd16.nexus.ui.fx.DiscSim
+import com.eoinknd16.nexus.ui.fx.ImpactHaptics
+import com.eoinknd16.nexus.ui.fx.MotionSensors
+import androidx.compose.ui.graphics.drawscope.rotate
+import kotlin.math.abs
 import com.eoinknd16.nexus.ui.theme.Nx
 import com.eoinknd16.nexus.ui.theme.hud
 import kotlin.math.ceil
@@ -84,162 +89,105 @@ fun FolderFill(icons: List<ImageBitmap>, scale: Float, modifier: Modifier = Modi
 }
 
 /**
- * The folder's apps as loose objects in a box: they fall with the phone's
- * real gravity (tilt it and they slide), bump into each other and the walls,
- * and get thrown about when the tile moves (scrolling, page swipes).
- * Drawn on one Canvas from plain arrays, so it never recomposes per frame.
+ * The folder's apps as loose objects trapped inside the phone: real-world
+ * gravity and scale, thrown about when you shake it or the screen moves,
+ * gripping the glass when it's lying flat, spinning when they glance off
+ * things, with a little buzz on each knock. Drawn on one Canvas from plain
+ * arrays, so it never recomposes per frame, and it stops redrawing once
+ * everything has settled.
  */
 @Composable
 fun FolderPhysics(icons: List<ImageBitmap>, tile: TileConfig, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val density = LocalDensity.current
-    val gravity = remember { FloatArray(2).also { it[1] = 9.81f } }
-    if (tile.folderPhysicsTilt) GravitySensor(context, gravity)
+    MotionSensors.Use()
+    val haptics = remember { ImpactHaptics(context) }
+    val hapticsOn = tile.folderPhysicsHaptics && com.eoinknd16.nexus.look.LookState.look.motion.haptics
 
     var size by remember { androidx.compose.runtime.mutableStateOf(IntSize.Zero) }
     var tick by remember { mutableLongStateOf(0L) }
     val n = icons.size
-    val sim = remember(n) { PhysicsSim(n) }
+    val sim = remember(n) { DiscSim(n) }
     val lastPos = remember { floatArrayOf(Float.NaN, Float.NaN) }
     val moved = remember { FloatArray(2) }
+
+    // Real size: how many px make a metre on this screen.
+    val pxPerMeter = remember {
+        val dm = context.resources.displayMetrics
+        val dpi = dm.ydpi.takeIf { it in 100f..900f } ?: dm.densityDpi.toFloat()
+        dpi / 0.0254f
+    }
 
     Canvas(
         modifier
             .clipToBounds()
             .onGloballyPositioned { coords ->
                 size = coords.size
-                // How far the tile itself moved since last frame -> inertia kick.
                 val p = coords.positionInRoot()
                 if (!lastPos[0].isNaN()) { moved[0] += p.x - lastPos[0]; moved[1] += p.y - lastPos[1] }
                 lastPos[0] = p.x; lastPos[1] = p.y
             },
     ) {
-        tick // read so each frame redraws
+        tick // read so each frame that moved redraws
         val r = sim.radius
+        val d = (r * 2).roundToInt()
         for (i in 0 until n) {
             val img = icons[i]
-            val d = (r * 2).roundToInt()
-            drawImage(
-                img,
-                srcOffset = IntOffset.Zero, srcSize = IntSize(img.width, img.height),
-                dstOffset = IntOffset((sim.x[i] - r).roundToInt(), (sim.y[i] - r).roundToInt()),
-                dstSize = IntSize(d, d),
-            )
+            rotate(if (tile.folderPhysicsSpin) sim.angle[i] else 0f, pivot = androidx.compose.ui.geometry.Offset(sim.x[i], sim.y[i])) {
+                drawImage(
+                    img,
+                    srcOffset = IntOffset.Zero, srcSize = IntSize(img.width, img.height),
+                    dstOffset = IntOffset((sim.x[i] - r).roundToInt(), (sim.y[i] - r).roundToInt()),
+                    dstSize = IntSize(d, d),
+                )
+            }
         }
     }
 
     LaunchedEffect(sim, size, tile.folderTileIconScale) {
         if (size.width == 0 || n == 0) return@LaunchedEffect
-        sim.layout(size.width.toFloat(), size.height.toFloat(), tile.folderTileIconScale)
+        // Size them so they fill roughly half the box: room to slosh about.
+        val perSide = ceil(sqrt(n * 2f)).coerceAtLeast(2f)
+        val r = (min(size.width, size.height) / perSide / 2f * 1.15f * tile.folderTileIconScale.coerceIn(0.5f, 1.5f)).coerceAtLeast(6f)
+        sim.layout(size.width.toFloat(), size.height.toFloat(), r)
         var last = 0L
-        val g = with(density) { 2400.dp.toPx() } // px/s^2 at 1 g
+        val prevVel = FloatArray(2)
+        var settledFrames = 0
         while (true) {
             withFrameNanos { now ->
-                val dt = if (last == 0L) 1f / 60f else ((now - last) / 1e9f).coerceIn(0f, 1f / 30f)
+                val dt = if (last == 0L) 1f / 60f else ((now - last) / 1e9f).coerceIn(1f / 240f, 1f / 30f)
                 last = now
-                val ax = if (tile.folderPhysicsTilt) -gravity[0] / 9.81f * g else 0f
-                val ay = (if (tile.folderPhysicsTilt) gravity[1] / 9.81f else 1f) * g
-                // The tile moved by `moved` px: in its frame the icons are thrown the other way.
+                val ppm = pxPerMeter * tile.folderPhysicsRealism.coerceIn(0.1f, 1f)
+                sim.restitution = tile.folderPhysicsBounce.coerceIn(0f, 1f) * 0.85f
+                sim.glassGrip = tile.folderPhysicsGrip.coerceIn(0f, 2f)
+                sim.spinOn = tile.folderPhysicsSpin
+
+                // What the icons feel, in m/s²: gravity, minus the phone's own movement.
+                val g = MotionSensors.gravity
+                val lin = MotionSensors.linear
+                val shake = tile.folderPhysicsShake.coerceIn(0f, 3f)
+                fun dz(v: Float) = if (abs(v) < 0.25f) 0f else v // ignore sensor noise
+                var fx = if (tile.folderPhysicsTilt) g[0] else 0f
+                var fy = if (tile.folderPhysicsTilt) g[1] else 9.81f
+                fx -= dz(lin[0]) * shake
+                fy -= dz(lin[1]) * shake
+                val normal = if (tile.folderPhysicsTilt) abs(g[2] - dz(lin[2]) * shake) else 0f
+
+                // The tile moving on screen (scrolling, page swipes): its acceleration throws them the other way.
                 val inertia = tile.folderPhysicsInertia.coerceIn(0f, 3f)
-                val kx = -moved[0] * inertia
-                val ky = -moved[1] * inertia
+                val vx = moved[0] / dt; val vy = moved[1] / dt
                 moved[0] = 0f; moved[1] = 0f
-                sim.step(dt, ax, ay, kx, ky, tile.folderPhysicsBounce.coerceIn(0f, 1f))
-                tick = now
+                val cap = 40f * pxPerMeter // ~4 g
+                val tax = ((vx - prevVel[0]) / dt).coerceIn(-cap, cap) * inertia * 0.5f
+                val tay = ((vy - prevVel[1]) / dt).coerceIn(-cap, cap) * inertia * 0.5f
+                prevVel[0] = vx; prevVel[1] = vy
+
+                val movedAny = sim.step(dt, fx * ppm - tax, fy * ppm - tay, normal * ppm, ppm)
+                if (hapticsOn && sim.hardestHit > 0f) haptics.hit(sim.hardestHit)
+                // Only redraw while something's moving.
+                if (movedAny) { settledFrames = 0; tick = now } else if (settledFrames++ < 2) tick = now
             }
         }
-    }
-}
-
-private class PhysicsSim(val n: Int) {
-    val x = FloatArray(n)
-    val y = FloatArray(n)
-    val vx = FloatArray(n)
-    val vy = FloatArray(n)
-    var radius = 10f
-    private var w = 0f
-    private var h = 0f
-
-    fun layout(width: Float, height: Float, scale: Float) {
-        val first = w == 0f
-        w = width; h = height
-        // Size so they pack into roughly half the box: room to slosh about.
-        val perSide = ceil(sqrt(n * 2f)).coerceAtLeast(2f)
-        radius = (min(w, h) / perSide / 2f * 1.15f * scale.coerceIn(0.5f, 1.5f)).coerceAtLeast(6f)
-        if (first) {
-            val cols = max(1, (w / (radius * 2)).toInt())
-            for (i in 0 until n) {
-                x[i] = radius + (i % cols) * radius * 2 + (i / cols % 2) * radius * 0.5f
-                y[i] = radius + (i / cols) * radius * 2
-            }
-        }
-        for (i in 0 until n) { x[i] = x[i].coerceIn(radius, w - radius); y[i] = y[i].coerceIn(radius, h - radius) }
-    }
-
-    fun step(dt: Float, ax: Float, ay: Float, kickX: Float, kickY: Float, bounce: Float) {
-        if (w == 0f) return
-        val sub = 3
-        val sdt = dt / sub
-        // A sudden tile move becomes a velocity change, capped so a page swipe doesn't fire them into orbit.
-        val cap = 4000f
-        val kvx = (if (dt > 0f) kickX / dt else 0f).coerceIn(-cap, cap) * 0.25f
-        val kvy = (if (dt > 0f) kickY / dt else 0f).coerceIn(-cap, cap) * 0.25f
-        for (i in 0 until n) { vx[i] += kvx; vy[i] += kvy }
-        val r = radius
-        val wallBounce = 0.15f + bounce * 0.8f
-        repeat(sub) {
-            for (i in 0 until n) {
-                vx[i] += ax * sdt
-                vy[i] += ay * sdt
-                vx[i] *= 0.998f
-                vy[i] *= 0.998f
-                x[i] += vx[i] * sdt
-                y[i] += vy[i] * sdt
-                if (x[i] < r) { x[i] = r; vx[i] = -vx[i] * wallBounce; vy[i] *= 0.96f }
-                if (x[i] > w - r) { x[i] = w - r; vx[i] = -vx[i] * wallBounce; vy[i] *= 0.96f }
-                if (y[i] < r) { y[i] = r; vy[i] = -vy[i] * wallBounce; vx[i] *= 0.96f }
-                if (y[i] > h - r) { y[i] = h - r; vy[i] = -vy[i] * wallBounce; vx[i] *= 0.96f }
-            }
-            // Icon-on-icon: push apart, swap the speed along the line between them.
-            val minD = r * 2
-            for (i in 0 until n) for (j in i + 1 until n) {
-                val dx = x[j] - x[i]
-                val dy = y[j] - y[i]
-                val d2 = dx * dx + dy * dy
-                if (d2 >= minD * minD || d2 == 0f) continue
-                val d = sqrt(d2)
-                val nx = dx / d
-                val ny = dy / d
-                val overlap = (minD - d) / 2
-                x[i] -= nx * overlap; y[i] -= ny * overlap
-                x[j] += nx * overlap; y[j] += ny * overlap
-                val rel = (vx[j] - vx[i]) * nx + (vy[j] - vy[i]) * ny
-                if (rel < 0) {
-                    val imp = -(1 + bounce * 0.7f) * rel / 2
-                    vx[i] -= imp * nx; vy[i] -= imp * ny
-                    vx[j] += imp * nx; vy[j] += imp * ny
-                }
-            }
-        }
-    }
-}
-
-/** Live gravity direction in screen terms (x right, y down), only while home is showing. */
-@Composable
-private fun GravitySensor(context: Context, out: FloatArray) {
-    LifecycleResumeEffect(Unit) {
-        val sm = context.getSystemService(SensorManager::class.java)
-        val sensor = sm?.getDefaultSensor(Sensor.TYPE_GRAVITY) ?: sm?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-        val listener = object : SensorEventListener {
-            override fun onSensorChanged(e: SensorEvent) {
-                // Device x points right, y up: screen-down gravity is +y here.
-                out[0] = e.values[0]
-                out[1] = e.values[1]
-            }
-            override fun onAccuracyChanged(s: Sensor?, a: Int) {}
-        }
-        if (sensor != null) sm.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_GAME)
-        onPauseOrDispose { sm?.unregisterListener(listener) }
     }
 }
 

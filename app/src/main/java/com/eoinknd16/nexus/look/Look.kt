@@ -404,6 +404,23 @@ sealed class HomeBlock {
         val framed: Boolean = false,
     ) : HomeBlock()
 
+    /** Battery level as liquid in a glass that sloshes when you tilt or shake the phone. */
+    @Serializable
+    @SerialName("liquid")
+    data class Liquid(
+        override val id: String = newId(),
+        override val visible: Boolean = true,
+        override val pin: BlockPin = BlockPin.None,
+        override val locked: Boolean = false,
+        val heightDp: Float = 110f,
+        val showPercent: Boolean = true,
+        /** Green when full, amber getting low, red when nearly empty (else the theme colour). */
+        val colourByLevel: Boolean = true,
+        val framed: Boolean = true,
+        /** How freely it sloshes (0 = thick like honey, 1 = water). */
+        val wobble: Float = 0.7f,
+    ) : HomeBlock()
+
     val kindLabel: String
         get() = when (this) {
             is Clock -> "Clock"
@@ -418,6 +435,7 @@ sealed class HomeBlock {
             is Text -> "Text"
             is Spacer -> "Spacer"
             is Glance -> "At a glance"
+            is Liquid -> "Liquid battery"
         }
 
     fun withVisible(v: Boolean): HomeBlock = copyMeta(visible = v)
@@ -437,6 +455,7 @@ sealed class HomeBlock {
         is Text -> copy(visible = visible, pin = pin, locked = locked)
         is Spacer -> copy(visible = visible, pin = pin, locked = locked)
         is Glance -> copy(visible = visible, pin = pin, locked = locked)
+        is Liquid -> copy(visible = visible, pin = pin, locked = locked)
     }
 }
 
@@ -580,6 +599,16 @@ data class TileConfig(
     val folderPhysicsTilt: Boolean = true,
     /** Physics: how hard the icons get thrown when home scrolls / pages slide. */
     val folderPhysicsInertia: Float = 1f,
+    /** Physics: 1 = real-life speed and weight for the phone's actual size; lower = floatier. */
+    val folderPhysicsRealism: Float = 1f,
+    /** Physics: how much shaking / bumping the phone throws them about (0 = off). */
+    val folderPhysicsShake: Float = 1f,
+    /** Physics: grip on the glass when the phone's lying flat (0 = ice, 1 = real, 2 = sticky). */
+    val folderPhysicsGrip: Float = 1f,
+    /** Physics: icons spin when they glance off things. */
+    val folderPhysicsSpin: Boolean = true,
+    /** Physics: a small buzz when they hit something. */
+    val folderPhysicsHaptics: Boolean = true,
     /** Locked = long-press won't open the editor (unlock from home edit mode). */
     val locked: Boolean = false,
     /** Per-tile border look; null fields fall back to Customise › Panels. */
