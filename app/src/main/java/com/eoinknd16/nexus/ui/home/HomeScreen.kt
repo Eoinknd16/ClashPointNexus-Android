@@ -172,6 +172,7 @@ fun HomeScreen() {
     // Leaving home (an app opened, the screen turned off) resets the drawer.
     LifecycleResumeEffect(drawer) { onPauseOrDispose { drawer.reset() } }
     val drawerOpen by remember { androidx.compose.runtime.derivedStateOf { drawer.isOpen } }
+    val pageSwipe = remember { PageSwipe(drawerScope, haptics) }
     // Feel for the big moments: entering edit mode, changing page, opening a folder.
     var firstPage by remember { mutableStateOf(true) }
     LaunchedEffect(com.eoinknd16.nexus.look.HomePager.current) { if (firstPage) firstPage = false else haptics.tick() }
@@ -249,6 +250,7 @@ fun HomeScreen() {
                 gestures = look.gestures,
                 enabled = !editMode && folder == null && !drawerOpen && !UniversalSearchHub.open,
                 drawer = drawer,
+                pages = pageSwipe,
                 onAction = { a, dir -> runner.runAction(a, dir) },
                 onFired = haptic,
                 // On an extra page, swiping back the way you came returns to main
@@ -290,19 +292,8 @@ fun HomeScreen() {
                     onCustomise = { nav.navigate(Routes.CUSTOMIZE) },
                 )
             }
-            Box(Modifier.weight(1f).onGloballyPositioned { pageTopY = it.positionInRoot().y; pageH = it.size.height }) {
-            androidx.compose.animation.AnimatedContent(
-                targetState = pager.current,
-                modifier = Modifier.fillMaxSize().trayBackdrop(if (trayPx > 0) blurFrom else 0f, home.trayBlurDp, home.trayFade),
-                transitionSpec = {
-                    val d = pager.direction
-                    val spec = com.eoinknd16.nexus.ui.fx.nexusSpring<androidx.compose.ui.unit.IntOffset>()
-                    if (!look.motion.animations) fadeIn(androidx.compose.animation.core.snap()) togetherWith fadeOut(androidx.compose.animation.core.snap())
-                    else (androidx.compose.animation.slideInHorizontally(spec) { w -> w * d } + fadeIn()) togetherWith
-                        (androidx.compose.animation.slideOutHorizontally(spec) { w -> -w * d } + fadeOut())
-                },
-                label = "homePage",
-            ) { pageId ->
+            Box(Modifier.weight(1f).onGloballyPositioned { pageTopY = it.positionInRoot().y; pageH = it.size.height; pageSwipe.width = it.size.width.toFloat().coerceAtLeast(1f) }) {
+            val pageBody: @Composable (String?) -> Unit = { pageId ->
             val pageBlocks = home.pages.firstOrNull { it.id == pageId }?.blocks ?: home.blocks
             val visibleBlocks = pageBlocks.filter { it.visible || editMode }
             val topBlocks = visibleBlocks.filter { it.pin == BlockPin.Top }
@@ -367,6 +358,25 @@ fun HomeScreen() {
                 Spacer(Modifier.height(trayDp))
             }
             }
+            }
+
+            val backdrop = Modifier.fillMaxSize().trayBackdrop(if (trayPx > 0) blurFrom else 0f, home.trayBlurDp, home.trayFade)
+            androidx.compose.animation.AnimatedContent(
+                targetState = pager.current,
+                modifier = backdrop.graphicsLayer { translationX = pageSwipe.offset.value },
+                transitionSpec = {
+                    val d = pager.direction
+                    val spec = com.eoinknd16.nexus.ui.fx.nexusSpring<androidx.compose.ui.unit.IntOffset>()
+                    // A finger-driven swipe has already done the moving; just swap.
+                    if (!look.motion.animations || pageSwipe.consumeInstant()) fadeIn(androidx.compose.animation.core.snap()) togetherWith fadeOut(androidx.compose.animation.core.snap())
+                    else (androidx.compose.animation.slideInHorizontally(spec) { w -> w * d } + fadeIn()) togetherWith
+                        (androidx.compose.animation.slideOutHorizontally(spec) { w -> -w * d } + fadeOut())
+                },
+                label = "homePage",
+            ) { pageId -> pageBody(pageId) }
+            // The page coming in alongside your finger.
+            pageSwipe.target?.let { t ->
+                Box(backdrop.graphicsLayer { translationX = pageSwipe.offset.value - pageSwipe.dir * pageSwipe.width }) { pageBody(t.id) }
             }
 
             Column(

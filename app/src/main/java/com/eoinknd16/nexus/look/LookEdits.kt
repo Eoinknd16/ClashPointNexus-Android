@@ -61,18 +61,31 @@ object HomePager {
     /** The swipe direction (-1 left / +1 right / 0 tile) that opened the current page. */
     var openedBy: Int by androidx.compose.runtime.mutableIntStateOf(0)
 
-    /** [target]: a page id, "main", "next" or "prev". [swipe]: -1 left, +1 right, 0 not a swipe. */
-    fun go(target: String, swipe: Int = 0) {
+    /** Where a page action would go from here (null = no such page). */
+    fun resolve(target: String): com.eoinknd16.nexus.ui.home.PageTarget? {
         val pages = LookState.look.home.pages
         val order = listOf<String?>(null) + pages.map { it.id }
         val here = order.indexOf(current).coerceAtLeast(0)
-        val dest: String? = when (target) {
-            "main", "" -> null
-            "next" -> order[(here + 1) % order.size]
-            "prev" -> order[(here - 1 + order.size) % order.size]
+        return when (target) {
+            "main", "" -> com.eoinknd16.nexus.ui.home.PageTarget(null)
+            "next" -> com.eoinknd16.nexus.ui.home.PageTarget(order[(here + 1) % order.size])
+            "prev" -> com.eoinknd16.nexus.ui.home.PageTarget(order[(here - 1 + order.size) % order.size])
             // Asking for the page you're already on takes you back home.
-            else -> if (target == current) null else pages.firstOrNull { it.id == target }?.id
+            else -> if (target == current) com.eoinknd16.nexus.ui.home.PageTarget(null)
+            else pages.firstOrNull { it.id == target }?.let { com.eoinknd16.nexus.ui.home.PageTarget(it.id) }
         }
+    }
+
+    /** [target]: a page id, "main", "next" or "prev". [swipe]: -1 left, +1 right, 0 not a swipe. */
+    fun go(target: String, swipe: Int = 0) {
+        val t = resolve(target) ?: return
+        goTo(t.id, swipe)
+    }
+
+    fun goTo(dest: String?, swipe: Int = 0) {
+        val pages = LookState.look.home.pages
+        val order = listOf<String?>(null) + pages.map { it.id }
+        val here = order.indexOf(current).coerceAtLeast(0)
         if (dest == current) return
         val there = order.indexOf(dest)
         direction = when {

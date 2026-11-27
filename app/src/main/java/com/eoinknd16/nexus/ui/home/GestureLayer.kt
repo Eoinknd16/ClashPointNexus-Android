@@ -58,6 +58,8 @@ fun Modifier.homeGestures(
     overrideFor: (SwipeDir) -> TileAction? = { null },
     /** When swipe-up opens the app drawer, the drawer follows the finger instead of waiting for a flick. */
     drawer: DrawerController? = null,
+    /** Swipes bound to a home page drag the pages with the finger. */
+    pages: PageSwipe? = null,
 ): Modifier = composed {
     // The detector stays attached and is only restarted when the gesture
     // settings change. Everything else is read live, so a change mid-swipe
@@ -66,7 +68,7 @@ fun Modifier.homeGestures(
     val act by rememberUpdatedState(onAction)
     val fired by rememberUpdatedState(onFired)
     val override by rememberUpdatedState(overrideFor)
-    pointerInput(gestures, drawer) { detectHomeGestures(gestures, { isEnabled }, { a, d -> act(a, d) }, { fired() }, { override(it) }, drawer) }
+    pointerInput(gestures, drawer, pages) { detectHomeGestures(gestures, { isEnabled }, { a, d -> act(a, d) }, { fired() }, { override(it) }, drawer, pages) }
 }
 
 private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectHomeGestures(
@@ -76,6 +78,7 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectHo
     onFired: () -> Unit,
     overrideFor: (SwipeDir) -> TileAction?,
     drawer: DrawerController?,
+    pages: PageSwipe?,
 ) {
     val touchSlop = viewConfiguration.touchSlop
     val minDistance = gestures.minDistanceDp.dp.toPx()
@@ -142,6 +145,32 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectHo
                         drawer.endDrag(runCatching { -tracker.calculateVelocity().y }.getOrDefault(0f))
                     }
                     break
+                }
+                // Pages: a clearly sideways drag whose direction is bound to a page follows the finger.
+                if (pages != null && maxPointers == 1 && ax > touchSlop && ax > ay * 1.5f) {
+                    val hDir = if (delta.x < 0) Dir.Left else Dir.Right
+                    val bound = overrideFor(hDir) ?: when (hDir) {
+                        Dir.Left -> gestures.swipeLeft.takeIf { it.zone == GestureZone.Anywhere || inRight }?.action
+                        else -> gestures.swipeRight.takeIf { it.zone == GestureZone.Anywhere || inLeft }?.action
+                    }
+                    if (bound != null && bound.kind == TileAction.Kind.Page && pages.start(bound.arg.ifBlank { "next" }, if (hDir == Dir.Left) -1 else 1)) {
+                        event.changes.forEach { it.consume() }
+                        var lastX = main.position.x
+                        try {
+                            while (true) {
+                                val e = awaitPointerEvent(PointerEventPass.Initial)
+                                val ch = e.changes.firstOrNull { it.id == first.id } ?: e.changes.firstOrNull()
+                                if (ch == null || !ch.pressed) break
+                                tracker.addPosition(ch.uptimeMillis, ch.position)
+                                pages.drag(ch.position.x - lastX)
+                                lastX = ch.position.x
+                                e.changes.forEach { it.consume() }
+                            }
+                        } finally {
+                            pages.end(runCatching { tracker.calculateVelocity().x }.getOrDefault(0f))
+                        }
+                        break
+                    }
                 }
                 if (maxOf(ax, ay) < minDistance) continue
                 val dir = when {
