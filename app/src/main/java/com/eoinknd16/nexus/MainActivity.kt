@@ -129,6 +129,7 @@ open class MainActivity : ComponentActivity() {
                         composable(Routes.ADDONS) { AddonsScreen() }
                         composable(Routes.CUSTOMIZE) { CustomizeScreen() }
                         composable(Routes.SPOTIFY) { com.eoinknd16.nexus.ui.spotify.SpotifyScreen() }
+                        composable(Routes.SETUPS) { com.eoinknd16.nexus.ui.settings.SetupsScreen() }
                     }
                     com.eoinknd16.nexus.ui.NightVeil()
                     com.eoinknd16.nexus.ui.UndoBar()

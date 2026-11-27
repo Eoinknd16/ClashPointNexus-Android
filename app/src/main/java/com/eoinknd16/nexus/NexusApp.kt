@@ -115,6 +115,30 @@ class AppContainer(app: Application) {
     /** Your Claude API key for "Ask Nexus" (stays on the phone). */
     val aiPrefs = JsonStore(ds, "ai_prefs", com.eoinknd16.nexus.ai.AiPrefs.serializer(), com.eoinknd16.nexus.ai.AiPrefs(), scope)
 
+    /** Saved whole-home setups and the automatic backups (see look/Setups.kt). */
+    val setups = com.eoinknd16.nexus.look.SetupStore(app, scope)
+
+    /** Save everything as it is now under [name]. */
+    suspend fun saveSetup(name: String, kind: String = "manual"): com.eoinknd16.nexus.look.SavedSetup {
+        val p = apps.prefs.get()
+        return setups.save(name, lookStore.get(), p.iconPack, p.hidden, kind)
+    }
+
+    /** Overwrite a saved setup with how things are now. */
+    suspend fun updateSetup(id: String) {
+        val p = apps.prefs.get()
+        setups.overwrite(id, lookStore.get(), p.iconPack, p.hidden)
+    }
+
+    /** Switch to a saved setup. What you had is saved first ("Before loading …"), and it can be undone too. */
+    suspend fun loadSetup(id: String): Boolean {
+        val s = setups.load(id) ?: return false
+        saveSetup("Before loading ${s.name}", kind = "before")
+        editLook("“${s.name}” loaded") { s.look }
+        apps.prefs.update { it.copy(iconPack = s.iconPack, hidden = s.hidden) }
+        return true
+    }
+
     val weather = WeatherRepository(app)
     val widgets = WidgetHost(app)
     val updater = com.eoinknd16.nexus.update.Updater(app)
@@ -123,6 +147,25 @@ class AppContainer(app: Application) {
         // Push every saved change into the live UI state.
         scope.launch(Dispatchers.Main) { lookStore.state.collect { LookState.apply(it) } }
         scope.launch { updater.checkIfDue() }
+        // Autosave: a backup of the whole setup when it first starts (so nothing you have now can be
+        // lost), then again whenever it's changed and the last autosave is 15+ minutes old.
+        scope.launch {
+            kotlinx.coroutines.delay(4_000) // let the saved look load first
+            fun stamp() = "Autosave · " + java.text.SimpleDateFormat("d MMM HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
+            setups.refresh()
+            if (setups.list.value.none { it.kind == "autosave" }) saveSetup(stamp(), "autosave")
+            var lastSaved = lookStore.get()
+            var lastAt = System.currentTimeMillis()
+            while (true) {
+                kotlinx.coroutines.delay(60_000)
+                val now = lookStore.get()
+                if (now != lastSaved && System.currentTimeMillis() - lastAt > 15 * 60_000L) {
+                    saveSetup(stamp(), "autosave")
+                    lastSaved = now
+                    lastAt = System.currentTimeMillis()
+                }
+            }
+        }
     }
 
     // ---- Undo ---------------------------------------------------------------

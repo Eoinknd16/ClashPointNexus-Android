@@ -137,6 +137,10 @@ fun CustomizeScreen() {
                     )
                 }
                 Text(
+                    hud("Setups"), style = MaterialTheme.typography.labelSmall, color = Nx.Lime,
+                    modifier = Modifier.nexusPress({ nav.navigate(Routes.SETUPS) }).padding(8.dp),
+                )
+                Text(
                     hud(if (showPreview) "Hide preview" else "Preview"),
                     style = MaterialTheme.typography.labelSmall, color = Nx.Cyan,
                     modifier = Modifier.nexusPress({ showPreview = !showPreview }).padding(8.dp),
@@ -171,6 +175,16 @@ fun CustomizeScreen() {
                         c.homeEditRequest.value = true
                         nav.popBackStack(Routes.HOME, inclusive = false)
                     }
+                }
+                Spacer(Modifier.height(10.dp))
+                HoloPanel(Modifier.fillMaxWidth(), accent = Nx.Lime) {
+                    Text("Saved setups", style = MaterialTheme.typography.titleMedium, color = Nx.Text)
+                    Text(
+                        "Save your whole home screen under a name and switch between setups. Loading one saves what you had first, and Nexus keeps automatic backups too.",
+                        style = MaterialTheme.typography.bodyMedium, color = Nx.Muted,
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    NexusButton("Saved setups", icon = Icons.Filled.Edit, accent = Nx.Lime, filled = true) { nav.navigate(Routes.SETUPS) }
                 }
                 }
 
