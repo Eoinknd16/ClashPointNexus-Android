@@ -14,6 +14,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlin.math.abs
+import androidx.compose.ui.composed
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.boundsInRoot
 
@@ -105,7 +106,7 @@ object SideScrollZones {
 }
 
 /** Marks this element as a sideways-scrolling area (see [SideScrollZones]). */
-fun androidx.compose.ui.Modifier.sideScrollZone(): androidx.compose.ui.Modifier = androidx.compose.ui.composed {
+fun androidx.compose.ui.Modifier.sideScrollZone(): androidx.compose.ui.Modifier = composed {
     val key = androidx.compose.runtime.remember { Any() }
     androidx.compose.runtime.DisposableEffect(key) { onDispose { SideScrollZones.remove(key) } }
     this.onGloballyPositioned { SideScrollZones.set(key, it.boundsInRoot()) }
