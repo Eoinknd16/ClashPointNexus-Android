@@ -417,8 +417,16 @@ sealed class HomeBlock {
         /** Green when full, amber getting low, red when nearly empty (else the theme colour). */
         val colourByLevel: Boolean = true,
         val framed: Boolean = true,
-        /** How freely it sloshes (0 = thick like honey, 1 = water). */
+        /** Legacy (before fluids): how freely it sloshes. Kept so old setups still load. */
         val wobble: Float = 0.7f,
+        /** What's in the glass: sets thickness, how waves travel and the edge shape. */
+        val fluid: LiquidFluid = LiquidFluid.Water,
+        /** Fine-tune thickness: 1 = the fluid's own, lower = runnier, higher = thicker. */
+        val thickness: Float = 1f,
+        /** Droplets fly when you shake it hard. */
+        val splashes: Boolean = true,
+        /** Real-world speed for the glass's actual size (1), or slower and dreamier. */
+        val realism: Float = 1f,
     ) : HomeBlock()
 
     val kindLabel: String
@@ -813,3 +821,17 @@ data class WeatherPrefs(
     val useDeviceLocation: Boolean = false,
     val unit: TempUnit = TempUnit.C,
 )
+
+/** What's in the liquid battery's glass. */
+@Serializable
+enum class LiquidFluid(val label: String, val viscosity: Float, val damping: Float, val tension: Float, val meniscus: Float) {
+    // viscosity: how much the flow smooths itself out; damping: drag along the bottom;
+    // tension: smooths small ripples; meniscus: the curve where it meets the glass (+ up, − down).
+    // viscosity in m²/s (tuned for a phone-sized glass), damping in 1/s, tension 0..0.25 per step
+    Water("Water", 0.000002f, 0.5f, 0.015f, 1f),
+    Juice("Juice", 0.000005f, 0.8f, 0.02f, 0.9f),
+    Oil("Oil", 0.00006f, 20f, 0.03f, 0.7f),
+    Syrup("Syrup", 0.0006f, 150f, 0.04f, 0.5f),
+    Honey("Honey", 0.004f, 600f, 0.05f, 0.35f),
+    Mercury("Mercury (heavy, metallic)", 0.000001f, 0.3f, 0.2f, -1.2f),
+}

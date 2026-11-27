@@ -356,7 +356,10 @@ private fun BlockEditor(block: HomeBlock, onDismiss: () -> Unit, onEdit: (HomeEd
             }
             is HomeBlock.Liquid -> {
                 SliderRow("Height", block.heightDp, 60f..260f, { "${it.roundToInt()}dp" }) { set(block.copy(heightDp = it)) }
-                SliderRow("Wobble", block.wobble, 0f..1f, { if (it < 0.15f) "Honey" else if (it > 0.85f) "Water" else "${(it * 100).roundToInt()}%" }) { set(block.copy(wobble = it)) }
+                ChoiceRow("Liquid", com.eoinknd16.nexus.look.LiquidFluid.entries, block.fluid, { it.label }) { set(block.copy(fluid = it)) }
+                SliderRow("Thickness", block.thickness, 0.1f..5f, { when { it in 0.95f..1.05f -> "As the liquid"; it < 1f -> "Runnier ${(it * 100).roundToInt()}%"; else -> "Thicker ${(it * 100).roundToInt()}%" } }) { set(block.copy(thickness = it)) }
+                SliderRow("Speed", block.realism, 0.15f..1f, { if (it >= 0.98f) "Real-life" else "${(it * 100).roundToInt()}%" }) { set(block.copy(realism = it)) }
+                ToggleRow("Splashes when shaken", block.splashes, "Runny liquids throw droplets on a hard shake") { set(block.copy(splashes = it)) }
                 ToggleRow("Show the percentage", block.showPercent) { set(block.copy(showPercent = it)) }
                 ToggleRow("Colour by level", block.colourByLevel, "Green when full, amber when low, red when nearly empty") { set(block.copy(colourByLevel = it)) }
                 ToggleRow("Inside a panel", block.framed) { set(block.copy(framed = it)) }
