@@ -2,5 +2,6 @@
     <string name="app_name">Nexus</string>
     <string name="accessibility_label">Nexus gestures</string>
     <string name="media_listener_label">Nexus now playing</string>
+    <string name="share_to_tv">Play on TV</string>
     <string name="accessibility_description">Lets Nexus home-screen gestures and tiles lock the screen, open Recent apps and Quick Settings. Nexus does not read or collect anything on your screen.</string>
 </resources>

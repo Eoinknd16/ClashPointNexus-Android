@@ -42,6 +42,21 @@
 
         <!-- Both a normal app and an optional home screen: Android shows it in
              the "choose your home app" list because of the HOME category. -->
+        <!-- "Play on TV" in the share sheet: sends a link to the PC. -->
+        <activity
+            android:name=".link.ShareToTvActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:label="@string/share_to_tv"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

@@ -123,6 +123,9 @@ data class ScreenRequest(val screen: String)
 data class PowerRequest(val action: String)
 
 @Serializable
+data class OpenUrlRequest(val url: String)
+
+@Serializable
 data class OkResponse(val ok: Boolean = true, val error: String? = null)
 
 /** HTTP client for the PC's remote API. Every call needs a paired config. */
@@ -296,6 +299,13 @@ class PcLinkClient(private val store: JsonStore<PcLinkConfig>, val saved: JsonSt
     /** "shutdown" / "restart" (20 s countdown on the PC), "cancel", or "sleep". */
     suspend fun power(action: String): OkResponse = try {
         post("/api/power", Http.json.encodeToString(PowerRequest.serializer(), PowerRequest(action)))
+    } catch (e: com.eoinknd16.nexus.core.HttpException) {
+        if (e.code == 404) OkResponse(false, "Update Nexus on the PC to use this") else throw e
+    }
+
+    /** Open a web link on the PC (Nexus's Browse screen). */
+    suspend fun openUrl(url: String): OkResponse = try {
+        post("/api/open-url", Http.json.encodeToString(OpenUrlRequest.serializer(), OpenUrlRequest(url)))
     } catch (e: com.eoinknd16.nexus.core.HttpException) {
         if (e.code == 404) OkResponse(false, "Update Nexus on the PC to use this") else throw e
     }
