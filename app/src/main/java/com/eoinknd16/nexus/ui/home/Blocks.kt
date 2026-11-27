@@ -1,5 +1,7 @@
 package com.eoinknd16.nexus.ui.home
 
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+
 import com.eoinknd16.nexus.look.updateDock
 
 import com.eoinknd16.nexus.look.updateBlock
@@ -191,7 +193,7 @@ fun BlockContent(
         is HomeBlock.Resume -> ResumeView(block, vm, headings, editMode)
         is HomeBlock.Posters -> PostersView(block, vm, headings, editMode)
         is HomeBlock.AppRow -> AppRowView(block, runner, headings, editMode)
-        is HomeBlock.Widget -> WidgetView(block)
+        is HomeBlock.Widget -> WidgetView(block, editMode)
         is HomeBlock.Text -> Text(
             block.text,
             fontSize = block.sizeSp.sp,
@@ -992,20 +994,53 @@ private fun AppRowView(b: HomeBlock.AppRow, runner: TileRunner, headings: Boolea
 // ---- Android widget --------------------------------------------------------------
 
 @Composable
-private fun WidgetView(b: HomeBlock.Widget) {
-    val widgets = appContainer().widgets
+private fun WidgetView(b: HomeBlock.Widget, editMode: Boolean = false) {
+    val c = appContainer()
+    val widgets = c.widgets
+    val haptics = com.eoinknd16.nexus.ui.fx.rememberHaptics()
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    // While resizing, the height follows the finger; it's saved when you let go.
+    var liveHeight by remember(b.heightDp) { mutableStateOf(b.heightDp) }
     val content = @Composable {
-        BoxWithConstraints(Modifier.fillMaxWidth().height(b.heightDp.dp)) {
+        BoxWithConstraints(Modifier.fillMaxWidth().height(liveHeight.dp)) {
             val w = maxWidth.value.toInt()
-            val h = b.heightDp.toInt()
+            val h = liveHeight.toInt()
             AndroidView(
                 factory = { ctx -> widgets.createView(ctx, b.appWidgetId) ?: FrameLayout(ctx) },
                 update = { v -> if (v is android.appwidget.AppWidgetHostView) widgets.updateSize(v, w, h) },
-                modifier = Modifier.fillMaxWidth().height(b.heightDp.dp),
+                modifier = Modifier.fillMaxWidth().height(liveHeight.dp),
             )
         }
     }
-    if (b.framed) Box(Modifier.fillMaxWidth().holoPanel(glow = 0.1f).padding(6.dp)) { content() } else content()
+    Column(Modifier.fillMaxWidth()) {
+        if (b.framed) Box(Modifier.fillMaxWidth().holoPanel(glow = 0.1f).padding(6.dp)) { content() } else content()
+        if (editMode) {
+            // Drag handle: pull up or down to resize the widget.
+            Box(
+                Modifier.fillMaxWidth().height(28.dp)
+                    .pointerInput(b.id) {
+                        var lastStep = (liveHeight / 20f).toInt()
+                        detectVerticalDragGestures(
+                            onDragStart = { haptics.pickUp() },
+                            onVerticalDrag = { ch, dy ->
+                                ch.consume()
+                                liveHeight = (liveHeight + with(density) { dy.toDp().value }).coerceIn(40f, 600f)
+                                val step = (liveHeight / 20f).toInt()
+                                if (step != lastStep) { lastStep = step; haptics.tick() }
+                            },
+                            onDragEnd = {
+                                val hNew = liveHeight
+                                c.editLook { l -> l.updateBlock(b.id) { blk -> if (blk is HomeBlock.Widget) blk.copy(heightDp = hNew) else blk } }
+                                haptics.thud()
+                            },
+                        )
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(Modifier.width(56.dp).height(5.dp).clip(CircleShape).background(Nx.Amber.copy(alpha = 0.8f)))
+            }
+        }
+    }
 }
 
 // ---- Dock ------------------------------------------------------------------------
