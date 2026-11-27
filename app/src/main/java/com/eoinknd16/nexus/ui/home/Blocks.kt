@@ -384,7 +384,8 @@ private fun SearchBarView(b: HomeBlock.SearchBar, runner: TileRunner) {
     ) {
         Icon(Icons.Filled.Search, null, tint = Nx.Cyan, modifier = Modifier.size(20.dp))
         Spacer(Modifier.width(10.dp))
-        Text(b.placeholder, color = Nx.Muted, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f), maxLines = 1)
+        // Older setups saved the old wording; show what the bar does now.
+        Text(if (b.placeholder == "Search the web") "Search or ask Nexus" else b.placeholder, color = Nx.Muted, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f), maxLines = 1)
         if (b.showMic) {
             Box(
                 Modifier.size(32.dp).nexusPress({

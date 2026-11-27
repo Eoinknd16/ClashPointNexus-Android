@@ -229,7 +229,7 @@ sealed class HomeBlock {
         val engine: SearchEngine = SearchEngine.Google,
         /** For [SearchEngine.Custom]: %s is replaced with the query. */
         val customUrl: String = "https://www.google.com/search?q=%s",
-        val placeholder: String = "Search the web",
+        val placeholder: String = "Search or ask Nexus",
         val showMic: Boolean = true,
         /** Matching installed apps appear as you type. */
         val matchApps: Boolean = true,
