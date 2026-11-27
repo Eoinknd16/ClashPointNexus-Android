@@ -143,6 +143,11 @@ data class Motion(
     val parallaxStrength: Float = 1f,
     /** A soft light that slides across panels as the phone moves. */
     val sheen: Boolean = true,
+    /** Night mode: dim and warm everything between these hours. */
+    val night: Boolean = false,
+    val nightStart: Int = 22,
+    val nightEnd: Int = 7,
+    val nightStrength: Float = 0.35f,
 )
 
 // ---- Home layout ---------------------------------------------------------------

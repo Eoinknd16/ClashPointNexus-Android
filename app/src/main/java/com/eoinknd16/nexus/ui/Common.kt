@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.foundation.layout.navigationBarsPadding
 import com.eoinknd16.nexus.ui.fx.holoPanel
@@ -155,3 +156,28 @@ fun UndoBar() {
     }
 }
 
+
+
+/**
+ * Night mode: between the chosen hours, a warm, dark veil over all of Nexus
+ * (touches pass straight through). Fades in and out instead of switching.
+ */
+@androidx.compose.runtime.Composable
+fun NightVeil() {
+    val m = com.eoinknd16.nexus.look.LookState.look.motion
+    var hour by androidx.compose.runtime.remember { androidx.compose.runtime.mutableIntStateOf(java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)) }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(60_000)
+            hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+        }
+    }
+    val start = m.nightStart.coerceIn(0, 23)
+    val end = m.nightEnd.coerceIn(0, 23)
+    val isNight = m.night && if (start <= end) hour in start until end else (hour >= start || hour < end)
+    val a by androidx.compose.animation.core.animateFloatAsState(if (isNight) m.nightStrength.coerceIn(0f, 0.8f) else 0f, androidx.compose.animation.core.tween(1500), label = "night")
+    if (a <= 0.001f) return
+    androidx.compose.foundation.Canvas(androidx.compose.ui.Modifier.fillMaxSize()) {
+        drawRect(androidx.compose.ui.graphics.Color(0xFF140A02).copy(alpha = a))
+    }
+}

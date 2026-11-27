@@ -285,6 +285,12 @@ fun CustomizeScreen() {
                     ToggleRow("Tilt parallax", m.parallax, "Background and home shift slightly as you move the phone") { v -> edit { it.copy(motion = m.copy(parallax = v)) } }
                     if (m.parallax) SliderRow("Parallax depth", m.parallaxStrength, 0.2f..3f, { "${(it * 100).roundToInt()}%" }) { v -> edit { it.copy(motion = m.copy(parallaxStrength = v)) } }
                     ToggleRow("Moving light on panels", m.sheen, "A soft glint that follows how you hold the phone") { v -> edit { it.copy(motion = m.copy(sheen = v)) } }
+                    ToggleRow("Night mode", m.night, "Dims and warms Nexus during the hours below") { v -> edit { it.copy(motion = m.copy(night = v)) } }
+                    if (m.night) {
+                        SliderRow("Night starts", m.nightStart.toFloat(), 0f..23f, { "%02d:00".format(it.roundToInt()) }, steps = 22) { v -> edit { it.copy(motion = m.copy(nightStart = v.roundToInt())) } }
+                        SliderRow("Night ends", m.nightEnd.toFloat(), 0f..23f, { "%02d:00".format(it.roundToInt()) }, steps = 22) { v -> edit { it.copy(motion = m.copy(nightEnd = v.roundToInt())) } }
+                        SliderRow("Night strength", m.nightStrength, 0.1f..0.8f, { "${(it * 100).roundToInt()}%" }) { v -> edit { it.copy(motion = m.copy(nightStrength = v)) } }
+                    }
                     ToggleRow("Glow pulse on tiles", m.pulse) { v -> edit { it.copy(motion = m.copy(pulse = v)) } }
                     ToggleRow("Haptic feedback", m.haptics) { v -> edit { it.copy(motion = m.copy(haptics = v)) } }
                     SliderRow("Press squish", 1f - m.pressScale, 0f..0.15f, { "${(it * 100).roundToInt()}%" }) { v -> edit { it.copy(motion = m.copy(pressScale = 1f - v)) } }

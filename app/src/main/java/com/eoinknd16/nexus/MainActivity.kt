@@ -119,6 +119,7 @@ class MainActivity : ComponentActivity() {
                         composable(Routes.ADDONS) { AddonsScreen() }
                         composable(Routes.CUSTOMIZE) { CustomizeScreen() }
                     }
+                    com.eoinknd16.nexus.ui.NightVeil()
                     com.eoinknd16.nexus.ui.UndoBar()
                 }
             }
