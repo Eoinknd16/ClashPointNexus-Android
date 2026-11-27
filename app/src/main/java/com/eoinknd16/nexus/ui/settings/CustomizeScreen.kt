@@ -594,6 +594,8 @@ private val GESTURE_ACTIONS: List<Pair<TileAction, String>> = buildList {
     add(TileAction(TileAction.Kind.QuickSettings) to "Quick settings")
     add(TileAction(TileAction.Kind.LockScreen) to "Lock screen")
     add(TileAction(TileAction.Kind.Recents) to "Recent apps")
+    add(TileAction(TileAction.Kind.Screen, "find") to "Search everything")
+    add(TileAction(TileAction.Kind.Screen, "ask") to "Ask Nexus (AI)")
     add(TileAction(TileAction.Kind.PcHub) to "PC controls panel")
     add(TileAction(TileAction.Kind.WakePc) to "Wake PC")
     add(TileAction(TileAction.Kind.SwitchPc, "next") to "Switch to next PC")

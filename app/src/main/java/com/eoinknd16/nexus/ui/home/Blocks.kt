@@ -1,5 +1,7 @@
 package com.eoinknd16.nexus.ui.home
 
+import androidx.compose.material.icons.filled.AutoAwesome
+
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 
 import com.eoinknd16.nexus.look.updateDock
@@ -183,6 +185,7 @@ fun BlockContent(
         is HomeBlock.Clock -> ClockView(block, vm)
         is HomeBlock.Weather -> WeatherPanel(block, vm)
         is HomeBlock.SearchBar -> SearchBarView(block, runner)
+        is HomeBlock.AskBar -> AskBarView(block)
         is HomeBlock.Tiles -> Column {
             if (headings && block.title.isNotBlank()) {
                 HudLabel(block.title)
@@ -372,20 +375,21 @@ private fun SearchBarView(b: HomeBlock.SearchBar, runner: TileRunner) {
     val voice = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
         if (r.resultCode == Activity.RESULT_OK) {
             r.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.let { spoken ->
-                UniversalSearchHub.show(spoken)
+                UniversalSearchHub.show(spoken, inlineAi = b.aiInline)
             }
         }
     }
     val shape = nexusShape(0.7f)
     Row(
-        Modifier.fillMaxWidth().nexusPress({ UniversalSearchHub.show() }).clip(shape).background(Nx.Panel).border(1.dp, Nx.CyanDim, shape)
+        Modifier.fillMaxWidth().nexusPress({ UniversalSearchHub.show(inlineAi = b.aiInline) }).clip(shape).background(Nx.Panel).border(1.dp, Nx.CyanDim, shape)
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(Icons.Filled.Search, null, tint = Nx.Cyan, modifier = Modifier.size(20.dp))
         Spacer(Modifier.width(10.dp))
         // Older setups saved the old wording; show what the bar does now.
-        Text(if (b.placeholder == "Search the web") "Search or ask Nexus" else b.placeholder, color = Nx.Muted, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f), maxLines = 1)
+        // Older setups saved earlier wording; show what the bar does now.
+        Text(if (b.placeholder == "Search the web" || b.placeholder == "Search or ask Nexus") (if (b.aiInline) "Search or ask Nexus" else "Search your phone and the web") else b.placeholder, color = Nx.Muted, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f), maxLines = 1)
         if (b.showMic) {
             Box(
                 Modifier.size(32.dp).nexusPress({
@@ -401,6 +405,36 @@ private fun SearchBarView(b: HomeBlock.SearchBar, runner: TileRunner) {
         }
     }
     @Suppress("UNUSED_EXPRESSION") runner
+}
+
+/** The Ask Nexus bar: straight into the AI, separate from search. */
+@Composable
+private fun AskBarView(b: HomeBlock.AskBar) {
+    val voice = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
+        if (r.resultCode == Activity.RESULT_OK) {
+            r.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.let { UniversalSearchHub.show(it, ask = true) }
+        }
+    }
+    val shape = nexusShape(0.7f)
+    Row(
+        Modifier.fillMaxWidth().nexusPress({ UniversalSearchHub.show(ask = true) }).clip(shape).background(Nx.Panel).border(1.dp, Nx.Magenta.copy(alpha = 0.6f), shape)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Filled.AutoAwesome, null, tint = Nx.Magenta, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(10.dp))
+        Text(b.placeholder, color = Nx.Muted, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f), maxLines = 1)
+        if (b.showMic) {
+            Box(
+                Modifier.size(32.dp).nexusPress({
+                    runCatching {
+                        voice.launch(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM))
+                    }
+                }),
+                contentAlignment = Alignment.Center,
+            ) { Icon(Icons.Filled.Mic, "Speak to Nexus", tint = Nx.Magenta) }
+        }
+    }
 }
 
 // ---- Tiles ---------------------------------------------------------------------

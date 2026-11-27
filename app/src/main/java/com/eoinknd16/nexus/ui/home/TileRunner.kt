@@ -28,6 +28,7 @@ import java.net.URLEncoder
 /** Nexus screens a tile can open, by the key stored in TileAction.arg. */
 val SCREEN_TARGETS = listOf(
     "find" to "Search everything",
+    "ask" to "Ask Nexus (AI)",
     "tv" to "TV",
     "search" to "Search movies & shows",
     "pc" to "PC remote",
@@ -108,6 +109,7 @@ class TileRunner(
                 // On home, the drawer slides up as a layer instead of a new screen.
                 if (a.arg == "apps" && HomeDrawerHub.open()) Unit
                 else if (a.arg == "find") UniversalSearchHub.show()
+                else if (a.arg == "ask") UniversalSearchHub.show(ask = true)
                 else screenRoute(a.arg)?.let { nav.navigate(it) } ?: toast("Unknown screen")
             TileAction.Kind.LaunchApp -> app(a.arg)?.let { launch(it, from) } ?: toast("App not installed")
             TileAction.Kind.WakePc -> c.scope.launch {

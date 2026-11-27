@@ -229,10 +229,24 @@ sealed class HomeBlock {
         val engine: SearchEngine = SearchEngine.Google,
         /** For [SearchEngine.Custom]: %s is replaced with the query. */
         val customUrl: String = "https://www.google.com/search?q=%s",
-        val placeholder: String = "Search or ask Nexus",
+        val placeholder: String = "Search your phone and the web",
         val showMic: Boolean = true,
         /** Matching installed apps appear as you type. */
         val matchApps: Boolean = true,
+        /** Also offer "Ask Nexus" (AI) inside this search. Off = a plain search. */
+        val aiInline: Boolean = false,
+    ) : HomeBlock()
+
+    /** A bar that goes straight to Ask Nexus (the AI), separate from search. */
+    @Serializable
+    @SerialName("askbar")
+    data class AskBar(
+        override val id: String = newId(),
+        override val visible: Boolean = true,
+        override val pin: BlockPin = BlockPin.None,
+        override val locked: Boolean = false,
+        val placeholder: String = "Ask Nexus to do something…",
+        val showMic: Boolean = true,
     ) : HomeBlock()
 
     @Serializable
@@ -370,6 +384,7 @@ sealed class HomeBlock {
             is Clock -> "Clock"
             is Weather -> "Weather"
             is SearchBar -> "Search bar"
+            is AskBar -> "Ask Nexus bar"
             is Tiles -> "Tiles"
             is Resume -> "Resume card"
             is Posters -> "Poster row"
@@ -388,6 +403,7 @@ sealed class HomeBlock {
         is Clock -> copy(visible = visible, pin = pin, locked = locked)
         is Weather -> copy(visible = visible, pin = pin, locked = locked)
         is SearchBar -> copy(visible = visible, pin = pin, locked = locked)
+        is AskBar -> copy(visible = visible, pin = pin, locked = locked)
         is Tiles -> copy(visible = visible, pin = pin, locked = locked)
         is Resume -> copy(visible = visible, pin = pin, locked = locked)
         is Posters -> copy(visible = visible, pin = pin, locked = locked)

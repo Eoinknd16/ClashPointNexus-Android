@@ -249,10 +249,16 @@ private fun BlockEditor(block: HomeBlock, onDismiss: () -> Unit, onEdit: (HomeEd
                 TextRow("Placeholder", block.placeholder) { set(block.copy(placeholder = it)) }
                 ToggleRow("Voice search button", block.showMic) { set(block.copy(showMic = it)) }
                 ToggleRow("Show matching apps while typing", block.matchApps) { set(block.copy(matchApps = it)) }
+                ToggleRow("Ask Nexus (AI) inside this search", block.aiInline, "Off = a plain search of your phone and the web. Add an \"Ask Nexus bar\" for the AI on its own.") { set(block.copy(aiInline = it)) }
                 Text(
                     "Want Google's own search bar? Add it as a widget: edit mode › Add widget › Google.",
                     style = MaterialTheme.typography.labelSmall, color = Nx.Muted,
                 )
+            }
+            is HomeBlock.AskBar -> {
+                TextRow("Placeholder", block.placeholder) { set(block.copy(placeholder = it)) }
+                ToggleRow("Voice button", block.showMic) { set(block.copy(showMic = it)) }
+                Hint("Set up which AI it uses in Nexus settings › Ask Nexus.")
             }
             is HomeBlock.Tiles -> {
                 TextRow("Heading", block.title) { set(block.copy(title = it)) }

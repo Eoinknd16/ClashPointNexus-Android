@@ -126,7 +126,8 @@ fun appTile(key: String, label: String) =
 val addableBlocks: List<Pair<String, () -> HomeBlock>> = listOf(
     "Clock & date" to { HomeBlock.Clock() },
     "Weather" to { HomeBlock.Weather() },
-    "Nexus search bar" to { HomeBlock.SearchBar() },
+    "Search bar" to { HomeBlock.SearchBar() },
+    "Ask Nexus (AI) bar" to { HomeBlock.AskBar() },
     "Tiles" to { HomeBlock.Tiles(title = "Tiles", tiles = emptyList()) },
     "Resume card" to { HomeBlock.Resume() },
     "Poster row" to { HomeBlock.Posters() },

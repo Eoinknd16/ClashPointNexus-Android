@@ -116,7 +116,16 @@ import kotlinx.serialization.json.jsonPrimitive
 object UniversalSearchHub {
     var open by mutableStateOf(false)
     var initialQuery by mutableStateOf("")
-    fun show(query: String = "") { initialQuery = query; open = true }
+    /** Opened as Ask Nexus (the AI) rather than search. */
+    var askMode by mutableStateOf(false)
+    /** In search mode: also offer Ask Nexus inside the results. */
+    var aiInline by mutableStateOf(false)
+    fun show(query: String = "", ask: Boolean = false, inlineAi: Boolean = false) {
+        initialQuery = query
+        askMode = ask
+        aiInline = inlineAi
+        open = true
+    }
 }
 
 private data class Command(val label: String, val keywords: String, val icon: ImageVector, val run: () -> Unit)
@@ -204,7 +213,10 @@ fun UniversalSearch(runner: TileRunner, onNavigate: (String) -> Unit) {
     val deviceAi by com.eoinknd16.nexus.ai.OnDeviceAi.state.collectAsStateWithLifecycle()
     LaunchedEffect(open) { if (open) com.eoinknd16.nexus.ai.OnDeviceAi.refresh() }
     // Show Ask Nexus when the chosen engine can actually answer.
-    val aiOn = if (aiPrefs.engine == "claude") aiPrefs.claudeReady else deviceAi == com.eoinknd16.nexus.ai.OnDeviceAi.State.Available
+    val aiReady = if (aiPrefs.engine == "claude") aiPrefs.claudeReady else deviceAi == com.eoinknd16.nexus.ai.OnDeviceAi.State.Available
+    val askMode = UniversalSearchHub.askMode
+    // AI only where you asked for it: the Ask Nexus bar/tile, or a search bar with "Ask Nexus inside" on.
+    val aiOn = aiReady && (askMode || UniversalSearchHub.aiInline)
     val ai = aiPrefs
     var aiBusy by remember { mutableStateOf(false) }
     var aiText by remember { mutableStateOf<String?>(null) }
@@ -309,6 +321,11 @@ fun UniversalSearch(runner: TileRunner, onNavigate: (String) -> Unit) {
     fun runTop() {
         if (q.isEmpty()) return
         val plan = localPlan(q)
+        if (askMode) {
+            // Ask mode never searches the web: known commands run directly, everything else goes to the AI.
+            if (plan != null) { haptics.click(); plan.forEach { it.second() }; close() } else if (aiReady) askAi()
+            return
+        }
         when {
             plan != null -> { haptics.click(); plan.forEach { it.second() }; close() }
             aiOn && soundsLikeRequest(q) -> askAi()
@@ -338,7 +355,7 @@ fun UniversalSearch(runner: TileRunner, onNavigate: (String) -> Unit) {
                     Icon(Icons.Filled.Search, null, tint = Nx.Cyan)
                     Spacer(Modifier.width(12.dp))
                     Box(Modifier.weight(1f)) {
-                        if (query.isEmpty()) Text(if (aiOn) "Search or ask Nexus anything…" else "Apps, contacts, commands, maths, shows, web…", color = Nx.Muted, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
+                        if (query.isEmpty()) Text(if (askMode) "Ask Nexus to do something…" else if (aiOn) "Search or ask Nexus anything…" else "Apps, contacts, settings, shows, web…", color = Nx.Muted, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
                         BasicTextField(
                             value = query,
                             onValueChange = { query = it },
@@ -358,7 +375,7 @@ fun UniversalSearch(runner: TileRunner, onNavigate: (String) -> Unit) {
                     Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).padding(top = 12.dp, bottom = 24.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    if (q.isEmpty()) {
+                    if (!askMode && q.isEmpty()) {
                         Hint2("Try “spot”, “wake pc”, “wifi”, “12*7”, “10 km in miles”, a name, or a film.")
                         // Recent-ish: first row of the tray for quick launching.
                         val dock = LookState.look.home.dock.items.mapNotNull { t -> apps.firstOrNull { it.key == t.action.arg } }
@@ -366,6 +383,12 @@ fun UniversalSearch(runner: TileRunner, onNavigate: (String) -> Unit) {
                             Group("Your apps") { AppRow(dock) { c.apps.launch(it); close() } }
                         }
                     }
+                    if (askMode && !aiReady) {
+                        Group("Ask Nexus") {
+                            ResultRow(Icons.Filled.AutoAwesome, "Set up the AI first", "Nexus settings › Ask Nexus", accent = Nx.Amber) { onNavigate(Routes.SETTINGS); close() }
+                        }
+                    }
+                    if (askMode && q.isEmpty()) Hint2("Try “open spotify and wake the pc”, “go to page 2”, “sleep the pc”, or just ask a question.")
                     plan?.let { steps ->
                         Group("Enter will") {
                             ResultRow(Icons.Filled.AutoAwesome, steps.joinToString(" · ") { it.first }, "Press Enter or tap", accent = Nx.Lime) {
@@ -373,7 +396,7 @@ fun UniversalSearch(runner: TileRunner, onNavigate: (String) -> Unit) {
                             }
                         }
                     }
-                    if (aiOn && q.length >= 3 && plan == null) {
+                    if (aiOn && q.length >= (if (askMode) 1 else 3) && plan == null) {
                         Group("Ask Nexus") {
                             ResultRow(Icons.Filled.AutoAwesome, if (aiBusy) "Thinking…" else "Ask: “$q”", if (aiText == null) (if (aiPrefs.engine == "claude") "Claude" else "On-device AI") + " · opens apps, controls the PC, switches pages…" else null, accent = Nx.Magenta) { askAi() }
                             aiText?.let { t -> Text(t, style = MaterialTheme.typography.bodyLarge, color = Nx.Text, modifier = Modifier.padding(vertical = 4.dp)) }
@@ -386,6 +409,7 @@ fun UniversalSearch(runner: TileRunner, onNavigate: (String) -> Unit) {
                             }
                         }
                     }
+                    if (!askMode) {
                     answer?.let { a ->
                         Group("Answer") {
                             ResultRow(Icons.Filled.Calculate, a.result, a.expression, accent = Nx.Lime, big = true) {
@@ -448,6 +472,7 @@ fun UniversalSearch(runner: TileRunner, onNavigate: (String) -> Unit) {
                             suggestions.forEach { s -> ResultRow(Icons.Filled.Search, s, null, accent = Nx.Muted) { runner.webSearch(s); close() } }
                         }
                     }
+                    } // end search-mode results
                 }
             }
         }
