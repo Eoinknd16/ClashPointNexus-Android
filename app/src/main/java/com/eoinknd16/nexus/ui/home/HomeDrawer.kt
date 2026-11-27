@@ -1,7 +1,6 @@
 package com.eoinknd16.nexus.ui.home
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
@@ -41,7 +40,10 @@ import kotlinx.coroutines.launch
  * the speed of your flick, and it can be caught again mid-flight.
  */
 class DrawerController(private val scope: CoroutineScope, private val haptics: Haptics) {
-    val progress = Animatable(0f)
+    /** Written synchronously on every touch event; animated with animate() when settling. */
+    private var progressState = androidx.compose.runtime.mutableFloatStateOf(0f)
+    val progress: ProgressView = ProgressView { progressState.floatValue }
+    private var settleJob: kotlinx.coroutines.Job? = null
     /** Height of the travel in px (set from layout). */
     var travel = 1f
     var dragging by mutableStateOf(false)
@@ -62,15 +64,15 @@ class DrawerController(private val scope: CoroutineScope, private val haptics: H
     }
 
     fun startDrag() {
+        settleJob?.cancel()
         dragging = true
         pastCommit = progress.value > 0.35f
-        scope.launch { progress.stop() }
     }
 
     /** [dyUp] = px the finger moved upwards since last call (negative = down). */
     fun dragBy(dyUp: Float) {
         val next = (progress.value + dyUp / travel).coerceIn(0f, 1.04f)
-        scope.launch { progress.snapTo(next) }
+        progressState.floatValue = next
         val commit = next > 0.35f
         if (commit != pastCommit) {
             pastCommit = commit
@@ -92,19 +94,25 @@ class DrawerController(private val scope: CoroutineScope, private val haptics: H
 
     fun open() = settle(true, 0f)
     fun close() = settle(false, 0f)
-    fun snapClosed() = scope.launch { progress.snapTo(0f) }
+    fun snapClosed() { settleJob?.cancel(); progressState.floatValue = 0f }
 
     /** Hard reset: closed, not dragging (leaving home, Home button). */
     fun reset() {
+        settleJob?.cancel()
         dragging = false
         pastCommit = false
-        scope.launch { progress.snapTo(0f) }
+        progressState.floatValue = 0f
     }
 
     private fun settle(open: Boolean, velocity: Float) {
-        scope.launch {
+        settleJob?.cancel()
+        settleJob = scope.launch {
             val (s, v) = spec(velocity)
-            if (LookState.look.motion.animations) progress.animateTo(if (open) 1f else 0f, s, v) else progress.snapTo(if (open) 1f else 0f)
+            val target = if (open) 1f else 0f
+            if (LookState.look.motion.animations) {
+                androidx.compose.animation.core.animate(progressState.floatValue, target, v, s) { x, _ -> progressState.floatValue = x }
+            }
+            progressState.floatValue = target
             if (open) { haptics.thud(); openedCount++ }
         }
     }
@@ -141,6 +149,10 @@ class DrawerController(private val scope: CoroutineScope, private val haptics: H
         }
     }
 }
+
+/** Read-only view of the drawer position (0 closed .. 1 open). */
+fun interface ProgressView { fun current(): Float }
+val ProgressView.value: Float get() = current()
 
 /** Lets tiles / gestures open the drawer overlay when home is showing. */
 object HomeDrawerHub {

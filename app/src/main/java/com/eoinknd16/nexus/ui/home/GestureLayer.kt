@@ -88,7 +88,7 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectHo
             // Wait for a fresh first finger.
             var event = awaitPointerEvent(PointerEventPass.Initial)
             val first = event.changes.firstOrNull { it.pressed && !it.previousPressed } ?: continue
-            if (!enabled()) continue
+            if (!enabled() || pages?.busy == true) continue
             val start = first.position
             val h = size.height.toFloat()
             val w = size.width.toFloat()
@@ -149,9 +149,10 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectHo
                 // Pages: a clearly sideways drag whose direction is bound to a page follows the finger.
                 if (pages != null && maxPointers == 1 && ax > touchSlop && ax > ay * 1.5f) {
                     val hDir = if (delta.x < 0) Dir.Left else Dir.Right
+                    // Page swipes work from anywhere on the screen, like any launcher.
                     val bound = overrideFor(hDir) ?: when (hDir) {
-                        Dir.Left -> gestures.swipeLeft.takeIf { it.zone == GestureZone.Anywhere || inRight }?.action
-                        else -> gestures.swipeRight.takeIf { it.zone == GestureZone.Anywhere || inLeft }?.action
+                        Dir.Left -> gestures.swipeLeft.action
+                        else -> gestures.swipeRight.action
                     }
                     if (bound != null && bound.kind == TileAction.Kind.Page && pages.start(bound.arg.ifBlank { "next" }, if (hDir == Dir.Left) -1 else 1)) {
                         event.changes.forEach { it.consume() }

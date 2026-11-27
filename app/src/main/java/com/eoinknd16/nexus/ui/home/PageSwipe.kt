@@ -1,15 +1,17 @@
 package com.eoinknd16.nexus.ui.home
 
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.spring
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.eoinknd16.nexus.look.HomePager
 import com.eoinknd16.nexus.look.LookState
 import com.eoinknd16.nexus.ui.fx.Haptics
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
@@ -20,39 +22,46 @@ data class PageTarget(val id: String?)
  * Home pages that follow your finger: the current page slides with the drag
  * and the destination slides in beside it. Let go past a third of the way (or
  * flick) and it completes; otherwise it springs back.
+ *
+ * The position is plain state written synchronously on every touch event
+ * (never via queued jobs), so no movement is ever lost.
  */
 class PageSwipe(private val scope: CoroutineScope, private val haptics: Haptics) {
-    val offset = Animatable(0f)
+    var offset by mutableFloatStateOf(0f)
+        private set
     var target by mutableStateOf<PageTarget?>(null)
         private set
     /** -1 = finger moving left (new page comes from the right), +1 = moving right. */
     var dir by mutableStateOf(-1)
         private set
     var width = 1f
-    private var swipe = 0
     private var instant = false
     private var pastCommit = false
+    private var settle: Job? = null
+
+    /** A swipe is still settling; ignore new touches for that split second. */
+    val busy: Boolean get() = settle?.isActive == true
 
     /** True once after a finger swipe completes, so the page swap doesn't animate again. */
     fun consumeInstant(): Boolean = instant.also { instant = false }
 
     /** Called when a horizontal drag starts. Returns false if this swipe doesn't go to a page. */
     fun start(pageAction: String, fingerDir: Int): Boolean {
+        if (settle?.isActive == true) return false // still finishing the last one
         val dest = HomePager.resolve(pageAction) ?: return false
         if (dest.id == HomePager.current) return false
+        instant = false
         dir = fingerDir
-        swipe = fingerDir
-        target = dest
+        offset = 0f
         pastCommit = false
-        scope.launch { offset.snapTo(0f) }
+        target = dest
         return true
     }
 
     fun drag(dx: Float) {
         if (target == null) return
-        val next = if (dir < 0) (offset.value + dx).coerceIn(-width, 0f) else (offset.value + dx).coerceIn(0f, width)
-        scope.launch { offset.snapTo(next) }
-        val commit = abs(next) > width / 3
+        offset = if (dir < 0) (offset + dx).coerceIn(-width, 0f) else (offset + dx).coerceIn(0f, width)
+        val commit = abs(offset) > width / 3
         if (commit != pastCommit) {
             pastCommit = commit
             if (commit) haptics.tick()
@@ -61,25 +70,22 @@ class PageSwipe(private val scope: CoroutineScope, private val haptics: Haptics)
 
     fun end(velocityX: Float) {
         val t = target ?: return
-        val moved = abs(offset.value)
+        val moved = abs(offset)
         val commit = moved > width / 3 || (velocityX * dir > 900f && moved > width * 0.06f)
-        scope.launch {
+        val fingerDir = dir
+        settle = scope.launch {
             val m = LookState.look.motion
-            val s = spring<Float>(dampingRatio = (1f - m.bounce * 0.4f).coerceIn(0.6f, 1f), stiffness = Spring.StiffnessMediumLow * m.speed.coerceIn(0.4f, 2.5f))
-            runCatching { offset.animateTo(if (commit) dir * width else 0f, s, velocityX) }
+            if (m.animations) {
+                val spec = spring<Float>(dampingRatio = (1f - m.bounce * 0.4f).coerceIn(0.6f, 1f), stiffness = Spring.StiffnessMediumLow * m.speed.coerceIn(0.4f, 2.5f))
+                animate(offset, if (commit) fingerDir * width else 0f, velocityX, spec) { v, _ -> offset = v }
+            }
             if (commit) {
                 instant = true
-                HomePager.goTo(t.id, swipe)
+                HomePager.goTo(t.id, fingerDir)
                 haptics.thud()
             }
             target = null
-            offset.snapTo(0f)
+            offset = 0f
         }
     }
-
-    fun cancel() {
-        target = null
-        scope.launch { offset.snapTo(0f) }
-    }
 }
-

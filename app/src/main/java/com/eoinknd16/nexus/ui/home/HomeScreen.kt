@@ -363,7 +363,7 @@ fun HomeScreen() {
             val backdrop = Modifier.fillMaxSize().trayBackdrop(if (trayPx > 0) blurFrom else 0f, home.trayBlurDp, home.trayFade)
             androidx.compose.animation.AnimatedContent(
                 targetState = pager.current,
-                modifier = backdrop.graphicsLayer { translationX = pageSwipe.offset.value },
+                modifier = backdrop.graphicsLayer { translationX = pageSwipe.offset },
                 transitionSpec = {
                     val d = pager.direction
                     val spec = com.eoinknd16.nexus.ui.fx.nexusSpring<androidx.compose.ui.unit.IntOffset>()
@@ -376,7 +376,7 @@ fun HomeScreen() {
             ) { pageId -> pageBody(pageId) }
             // The page coming in alongside your finger.
             pageSwipe.target?.let { t ->
-                Box(backdrop.graphicsLayer { translationX = pageSwipe.offset.value - pageSwipe.dir * pageSwipe.width }) { pageBody(t.id) }
+                Box(backdrop.graphicsLayer { translationX = pageSwipe.offset - pageSwipe.dir * pageSwipe.width }) { pageBody(t.id) }
             }
 
             Column(
