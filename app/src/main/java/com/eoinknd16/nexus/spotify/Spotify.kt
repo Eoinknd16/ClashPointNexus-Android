@@ -290,7 +290,9 @@ class Spotify(private val context: Context, val prefs: JsonStore<SpotifyPrefs>, 
         var next: String? = "/playlists/$id/items?limit=100"
         var pages = 0
         while (next != null && pages++ < 10) {
-            val page = runCatching { get(next) }.getOrElse { if (pages == 1) get("/playlists/$id/tracks?limit=100") else break }
+            val page = runCatching { get(next) }.getOrNull()
+                ?: (if (pages == 1) runCatching { get("/playlists/$id/tracks?limit=100") }.getOrNull() else null)
+                ?: break
             out += page.arr("items").mapNotNull { (it.obj()?.get("item") ?: it.obj()?.get("track"))?.obj()?.let(::track) }
             next = page.str("next")
         }
