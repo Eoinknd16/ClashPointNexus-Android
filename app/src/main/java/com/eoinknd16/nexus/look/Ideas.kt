@@ -85,6 +85,11 @@ private fun Look.rebuild(pageName: String, main: (picks: Picks, keep: (TileConfi
     return copy(home = home.copy(blocks = newMain, pages = pages + morePage))
 }
 
+private fun Look.clockOr() = home.blocks.filterIsInstance<HomeBlock.Clock>().firstOrNull() ?: HomeBlock.Clock()
+private fun Look.searchOr() = home.blocks.filterIsInstance<HomeBlock.SearchBar>().firstOrNull() ?: HomeBlock.SearchBar()
+private fun Look.askOr() = home.blocks.filterIsInstance<HomeBlock.AskBar>().firstOrNull() ?: HomeBlock.AskBar(placeholder = "Ask Nexus…")
+private fun Look.glanceOr() = home.blocks.filterIsInstance<HomeBlock.Glance>().firstOrNull() ?: HomeBlock.Glance()
+
 private data class Picks(val tv: TileConfig, val spotify: TileConfig, val pc: TileConfig, val tools: TileConfig?, val social: TileConfig?)
 
 val lookIdeas: List<LookIdea> = listOf(
@@ -159,6 +164,163 @@ val lookIdeas: List<LookIdea> = listOf(
                         tiles = folders.mapIndexed { i, f ->
                             keep(f).copy(skin = null, border = outline, colSpan = 1, rowSpan = 1, folderTileStyle = if (i == 0) FolderTileStyle.Physics else FolderTileStyle.Fill)
                         },
+                    )
+                },
+            )
+        }
+    },
+    LookIdea(
+        "Aurora media",
+        "Watching and listening first: a compact clock, what you were playing to pick up again, posters picked from your watch history, aurora tiles for Spotify and your PC, and your folder as an orbit ring.",
+    ) { l ->
+        l.copy(
+            presetName = "Aurora media",
+            palette = l.palette.copy(
+                accent = "#ED93B1", accent2 = "#AFA9EC", warn = "#FAC775", good = "#5DCAA5",
+                background = "#110816", deep = "#0A0410", panel = "#2A1636", text = "#F6EEF9", muted = "#B4A6C4", panelOpacity = 0.85f,
+            ),
+            backdrop = l.backdrop.copy(style = BackdropStyle.Nebula, scanlines = false, vignette = true, intensity = 0.7f),
+            fonts = l.fonts.copy(clock = FontChoice.Medium, uppercaseLabels = false),
+            home = l.home.copy(tileSkin = tileSkinPresets.first { it.first == "Aurora" }.second),
+        ).rebuild("Aurora media") { p, keep ->
+            listOfNotNull(
+                l.clockOr().copy(sizeSp = 40f, align = Align.Start, showDate = false, showWeather = true, showPcStatus = false),
+                HomeBlock.Resume(title = "", maxItems = 1),
+                HomeBlock.Posters(title = "Picked for you", source = PosterSource.ForYou, count = 12, posterWidthDp = 72f),
+                HomeBlock.Tiles(
+                    title = "", columns = 2, aspect = 1.7f, gapDp = 10f, iconSizeDp = 26f, paddingDp = 14f, showSublabels = false,
+                    tiles = listOfNotNull(
+                        keep(p.spotify).copy(skin = null, border = null),
+                        keep(p.pc).copy(skin = null, border = null),
+                        p.tools?.let { keep(it).copy(skin = null, border = null, colSpan = 2, folderTileStyle = FolderTileStyle.Fill, folderStyle = FolderStyle.Ring, folderRingSize = 0f) },
+                    ),
+                ),
+            )
+        }
+    },
+    LookIdea(
+        "App-colour bento",
+        "Bright and playful on a light background: a bento grid where every tile takes its app's colour with an oversized icon, a tall physics folder, and search at the bottom.",
+    ) { l ->
+        l.copy(
+            presetName = "App-colour bento",
+            palette = l.palette.copy(
+                accent = "#185FA5", accent2 = "#D85A30", warn = "#EF9F27", good = "#1D9E75",
+                background = "#F1EFE8", deep = "#E6E3DA", panel = "#FFFFFF", text = "#2C2C2A", muted = "#5F5E5A", panelOpacity = 0.95f,
+            ),
+            backdrop = l.backdrop.copy(style = BackdropStyle.Plain, scanlines = false, vignette = false),
+            fonts = l.fonts.copy(clock = FontChoice.Medium, uppercaseLabels = false),
+            home = l.home.copy(tileSkin = tileSkinPresets.first { it.first == "App colours" }.second.copy(shadow = SkinShadow.None, shape = SkinShape.Rounded, corner = 26f)),
+        ).rebuild("App-colour bento") { p, keep ->
+            listOfNotNull(
+                l.clockOr().copy(sizeSp = 40f, align = Align.Start, showDate = true, showWeather = true, showPcStatus = false, dateFormat = "EEEE d MMMM"),
+                HomeBlock.Tiles(
+                    title = "", columns = 2, aspect = 1.6f, gapDp = 10f, iconSizeDp = 30f, paddingDp = 14f, showSublabels = true,
+                    tiles = listOfNotNull(
+                        keep(p.spotify).copy(skin = null, border = null, rowSpan = 2, color = "good"),
+                        keep(p.tv).copy(skin = null, border = null, color = "#2C2C2A"),
+                        keep(p.pc).copy(skin = null, border = null, color = "accent"),
+                        p.social?.let { keep(it).copy(skin = null, border = null, rowSpan = 2, folderTileStyle = FolderTileStyle.Physics, color = "#FFFFFF") },
+                        p.tools?.let { keep(it).copy(skin = null, border = null, rowSpan = 2, folderTileStyle = FolderTileStyle.Fill, color = "accent2") },
+                    ),
+                ),
+                l.searchOr().copy(placeholder = "Search or ask"),
+            )
+        }
+    },
+    LookIdea(
+        "Synthwave",
+        "Neon pink and cyan on deep purple with the grid horizon, a big centred condensed clock, glowing neon tiles in three columns and your folders as physics boxes.",
+    ) { l ->
+        l.copy(
+            presetName = "Synthwave",
+            palette = l.palette.copy(
+                accent = "#FF2A6D", accent2 = "#05D9E8", warn = "#F9C80E", good = "#01FF89",
+                background = "#0B0221", deep = "#05010F", panel = "#1A0B3A", text = "#FDF0FF", muted = "#A98CC9", panelOpacity = 0.7f,
+            ),
+            backdrop = l.backdrop.copy(style = BackdropStyle.Grid, scanlines = true, vignette = true, intensity = 1f),
+            fonts = l.fonts.copy(clock = FontChoice.Condensed, label = FontChoice.Mono, uppercaseLabels = true),
+            home = l.home.copy(tileSkin = tileSkinPresets.first { it.first == "Neon" }.second.copy(anim = SkinAnim.Pulse, animSpeed = 0.6f)),
+        ).rebuild("Synthwave") { p, keep ->
+            listOfNotNull(
+                l.clockOr().copy(sizeSp = 84f, align = Align.Center, showDate = true, showWeather = true, showPcStatus = true),
+                l.searchOr(),
+                HomeBlock.Tiles(
+                    title = "", columns = 3, aspect = 1f, gapDp = 12f, iconSizeDp = 32f, paddingDp = 12f, showSublabels = false,
+                    tileLayout = TileLayout.Centered,
+                    tiles = listOfNotNull(
+                        keep(p.tv).copy(skin = null, border = null, color = "accent"),
+                        keep(p.spotify).copy(skin = null, border = null, color = "accent2"),
+                        keep(p.pc).copy(skin = null, border = null, color = "warn"),
+                        p.social?.let { keep(it).copy(skin = null, border = null, folderTileStyle = FolderTileStyle.Physics, color = "accent2") },
+                        p.tools?.let { keep(it).copy(skin = null, border = null, colSpan = 2, folderTileStyle = FolderTileStyle.Physics, color = "accent") },
+                    ),
+                ),
+            )
+        }
+    },
+    LookIdea(
+        "Paper",
+        "Calm and editorial: warm off-white, a serif clock, a framed at-a-glance card, soft white tiles with gentle shadows and one coral accent.",
+    ) { l ->
+        l.copy(
+            presetName = "Paper",
+            palette = l.palette.copy(
+                accent = "#E4572E", accent2 = "#2E86AB", warn = "#F2A541", good = "#3BB273",
+                background = "#FAF8F3", deep = "#F0ECE3", panel = "#FFFFFF", text = "#1E1D1A", muted = "#76716A", panelOpacity = 1f,
+            ),
+            backdrop = l.backdrop.copy(style = BackdropStyle.Plain, scanlines = false, vignette = false),
+            fonts = l.fonts.copy(heading = FontChoice.Serif, clock = FontChoice.Serif, label = FontChoice.Default, uppercaseLabels = false),
+            home = l.home.copy(
+                tileSkin = TileSkin(
+                    preset = "Paper", fill = SkinFill.Solid, color1 = "#FFFFFF", shape = SkinShape.Rounded, corner = 20f,
+                    shadow = SkinShadow.Soft, shadowSize = 6f, iconStyle = SkinIconStyle.Plain,
+                    font = SkinFont.Serif, labelWeight = 600, labelColor = "text", subColor = "muted", press = SkinPress.Sink,
+                ),
+            ),
+        ).rebuild("Paper") { p, keep ->
+            listOfNotNull(
+                l.clockOr().copy(sizeSp = 60f, align = Align.Start, showDate = true, showWeather = true, showPcStatus = false, dateFormat = "EEEE, d MMMM"),
+                l.glanceOr().copy(framed = true, maxLines = 2),
+                HomeBlock.Tiles(
+                    title = "", columns = 2, aspect = 1.5f, gapDp = 12f, iconSizeDp = 28f, paddingDp = 16f, showSublabels = true,
+                    tiles = listOfNotNull(
+                        keep(p.tv).copy(skin = null, border = null),
+                        keep(p.spotify).copy(skin = null, border = null),
+                        p.tools?.let { keep(it).copy(skin = null, border = null, folderTileStyle = FolderTileStyle.Fill) },
+                        p.social?.let { keep(it).copy(skin = null, border = null, folderTileStyle = FolderTileStyle.Fill) },
+                    ),
+                ),
+                l.searchOr(),
+            )
+        }
+    },
+    LookIdea(
+        "Terminal",
+        "Green-on-black hacker console: monospace everything, scanlines, cut corners, a command bar for Ask Nexus, list rows for TV, PC and Spotify, and folders that rattle about.",
+    ) { l ->
+        l.copy(
+            presetName = "Terminal",
+            palette = l.palette.copy(
+                accent = "#33FF66", accent2 = "#33FF66", warn = "#E6FF33", good = "#33FF66",
+                background = "#020A04", deep = "#010502", panel = "#04140A", text = "#B8FFC8", muted = "#4C8F5D", panelOpacity = 0.9f,
+            ),
+            backdrop = l.backdrop.copy(style = BackdropStyle.Plain, scanlines = true, vignette = true),
+            fonts = l.fonts.copy(heading = FontChoice.Mono, body = FontChoice.Mono, label = FontChoice.Mono, clock = FontChoice.Mono, uppercaseLabels = true),
+            home = l.home.copy(tileSkin = tileSkinPresets.first { it.first == "Terminal" }.second),
+        ).rebuild("Terminal") { p, keep ->
+            listOfNotNull(
+                l.clockOr().copy(sizeSp = 56f, align = Align.Start, showDate = true, showWeather = true, showPcStatus = true, dateFormat = "yyyy-MM-dd EEE"),
+                l.askOr().copy(placeholder = "> run a command…"),
+                HomeBlock.Tiles(
+                    title = "", columns = 1, rowHeightDp = 44f, gapDp = 6f, iconSizeDp = 18f, labelScale = 0.9f, paddingDp = 10f,
+                    showSublabels = true, tileLayout = TileLayout.Inline,
+                    tiles = listOf(keep(p.tv).copy(skin = null, border = null), keep(p.pc).copy(skin = null, border = null), keep(p.spotify).copy(skin = null, border = null)),
+                ),
+                listOfNotNull(p.social, p.tools).takeIf { it.isNotEmpty() }?.let { folders ->
+                    HomeBlock.Tiles(
+                        title = "", columns = 2, aspect = 1.3f, gapDp = 8f, iconSizeDp = 20f, paddingDp = 10f, showSublabels = false,
+                        tiles = folders.map { keep(it).copy(skin = null, border = null, folderTileStyle = FolderTileStyle.Physics) },
                     )
                 },
             )
