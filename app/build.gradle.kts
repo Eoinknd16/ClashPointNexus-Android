@@ -55,6 +55,9 @@ android {
     }
     kotlinOptions {
         jvmTarget = "17"
+        // ML Kit's on-device AI library is built with a newer Kotlin; its API is
+        // plain and reads fine, so accept the newer metadata.
+        freeCompilerArgs += listOf("-Xskip-metadata-version-check")
     }
     buildFeatures {
         compose = true

@@ -172,7 +172,6 @@ fun HomeScreen() {
     // Leaving home (an app opened, the screen turned off) resets the drawer.
     LifecycleResumeEffect(drawer) { onPauseOrDispose { drawer.reset() } }
     val drawerOpen by remember { androidx.compose.runtime.derivedStateOf { drawer.isOpen } }
-    val pageSwipe = remember { PageSwipe(drawerScope, haptics) }
     // Feel for the big moments: entering edit mode, changing page, opening a folder.
     var firstPage by remember { mutableStateOf(true) }
     LaunchedEffect(com.eoinknd16.nexus.look.HomePager.current) { if (firstPage) firstPage = false else haptics.tick() }
@@ -200,6 +199,25 @@ fun HomeScreen() {
     val haptic = rememberGestureHaptic()
 
     val pager = com.eoinknd16.nexus.look.HomePager
+    // Page order: extra pages to the left of main if swipe-right is set to open a page (or you chose left).
+    val pagesLeft = when (home.pagesSide) {
+        "left" -> true
+        "right" -> false
+        else -> look.gestures.swipeRight.action.kind == TileAction.Kind.Page
+    }
+    val pageOrder: List<String?> = if (pagesLeft) home.pages.map { it.id }.reversed() + listOf<String?>(null) else listOf<String?>(null) + home.pages.map { it.id }
+    val pagerState = androidx.compose.foundation.pager.rememberPagerState(initialPage = pageOrder.indexOf(pager.current).coerceAtLeast(0)) { pageOrder.size }
+    // Keep the swiper and "which page" (dots, tiles, Home button) in step both ways.
+    LaunchedEffect(pagerState.settledPage, pageOrder) {
+        val id = pageOrder.getOrNull(pagerState.settledPage)
+        if (pageOrder.isNotEmpty() && id != pager.current) pager.goTo(id)
+    }
+    LaunchedEffect(pager.current, pageOrder) {
+        val idx = pageOrder.indexOf(pager.current)
+        if (idx >= 0 && idx != pagerState.currentPage && !pagerState.isScrollInProgress) {
+            if (look.motion.animations) pagerState.animateScrollToPage(idx) else pagerState.scrollToPage(idx)
+        }
+    }
     // A deleted page falls back to main.
     LaunchedEffect(home.pages, pager.current) {
         if (pager.current != null && home.pages.none { it.id == pager.current }) pager.current = null
@@ -250,15 +268,15 @@ fun HomeScreen() {
                 gestures = look.gestures,
                 enabled = !editMode && folder == null && !drawerOpen && !UniversalSearchHub.open,
                 drawer = drawer,
-                pages = pageSwipe,
                 onAction = { a, dir -> runner.runAction(a, dir) },
                 onFired = haptic,
-                // On an extra page, swiping back the way you came returns to main
-                // (either way if it was opened by a tile/dots).
-                overrideFor = { dir ->
-                    val back = when (pager.openedBy) { -1 -> SwipeDir.Right; 1 -> SwipeDir.Left; else -> null }
-                    val horizontal = dir == SwipeDir.Left || dir == SwipeDir.Right
-                    if (pager.current != null && horizontal && (back == null || dir == back)) TileAction(TileAction.Kind.Page, "main") else null
+                // Finger moving left = towards the next page on the right.
+                canPage = { dir ->
+                    when (dir) {
+                        SwipeDir.Left -> pagerState.canScrollForward
+                        SwipeDir.Right -> pagerState.canScrollBackward
+                        else -> false
+                    }
                 },
             )
             .then(if (blur > 0.5f) Modifier.blur(blur.dp) else Modifier),
@@ -292,7 +310,7 @@ fun HomeScreen() {
                     onCustomise = { nav.navigate(Routes.CUSTOMIZE) },
                 )
             }
-            Box(Modifier.weight(1f).onGloballyPositioned { pageTopY = it.positionInRoot().y; pageH = it.size.height; pageSwipe.width = it.size.width.toFloat().coerceAtLeast(1f) }) {
+            Box(Modifier.weight(1f).onGloballyPositioned { pageTopY = it.positionInRoot().y; pageH = it.size.height }) {
             val pageBody: @Composable (String?) -> Unit = { pageId ->
             val pageBlocks = home.pages.firstOrNull { it.id == pageId }?.blocks ?: home.blocks
             val visibleBlocks = pageBlocks.filter { it.visible || editMode }
@@ -361,23 +379,13 @@ fun HomeScreen() {
             }
 
             val backdrop = Modifier.fillMaxSize().trayBackdrop(if (trayPx > 0) blurFrom else 0f, home.trayBlurDp, home.trayFade)
-            androidx.compose.animation.AnimatedContent(
-                targetState = pager.current,
-                modifier = backdrop.graphicsLayer { translationX = pageSwipe.offset },
-                transitionSpec = {
-                    val d = pager.direction
-                    val spec = com.eoinknd16.nexus.ui.fx.nexusSpring<androidx.compose.ui.unit.IntOffset>()
-                    // A finger-driven swipe has already done the moving; just swap.
-                    if (!look.motion.animations || pageSwipe.consumeInstant()) fadeIn(androidx.compose.animation.core.snap()) togetherWith fadeOut(androidx.compose.animation.core.snap())
-                    else (androidx.compose.animation.slideInHorizontally(spec) { w -> w * d } + fadeIn()) togetherWith
-                        (androidx.compose.animation.slideOutHorizontally(spec) { w -> -w * d } + fadeOut())
-                },
-                label = "homePage",
-            ) { pageId -> pageBody(pageId) }
-            // The page coming in alongside your finger.
-            pageSwipe.target?.let { t ->
-                Box(backdrop.graphicsLayer { translationX = pageSwipe.offset - pageSwipe.dir * pageSwipe.width }) { pageBody(t.id) }
-            }
+            // Plain page swiping: the main page plus your extra pages, side by side.
+            androidx.compose.foundation.pager.HorizontalPager(
+                state = pagerState,
+                modifier = backdrop,
+                key = { i -> pageOrder.getOrNull(i) ?: "main" },
+                beyondViewportPageCount = 0,
+            ) { i -> pageBody(pageOrder.getOrNull(i)) }
 
             Column(
                 Modifier.align(Alignment.BottomCenter).fillMaxWidth()
@@ -385,7 +393,7 @@ fun HomeScreen() {
                     .navigationBarsPadding(),
             ) {
             if (home.showPageDots && home.pages.isNotEmpty()) {
-                PageDots(listOf<String?>(null) + home.pages.map { it.id }, pager.current) { pager.go(it ?: "main") }
+                PageDots(pageOrder, pager.current) { pager.go(it ?: "main") }
             }
             val dockShown = (home.dock.visible && currentPage?.showDock != false) || editMode
             if (!dockShown) dockIconsY = Float.NaN

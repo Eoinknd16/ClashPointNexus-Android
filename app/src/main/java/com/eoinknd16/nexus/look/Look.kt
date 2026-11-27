@@ -620,6 +620,8 @@ data class HomeLayout(
     val pages: List<HomePage> = emptyList(),
     /** Little dots above the tray showing which page you're on. */
     val showPageDots: Boolean = true,
+    /** Which side of the main page the extra pages sit: "auto", "left" or "right". */
+    val pagesSide: String = "auto",
     /** Blur of the page where it slides under the tray (dp; 0 = off; Android 12+). */
     val trayBlurDp: Float = 18f,
     /** Fade the page out under the tray and off the bottom of the screen. */

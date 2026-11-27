@@ -836,11 +836,16 @@ private fun PagesEditor(onDismiss: () -> Unit) {
     val pager = com.eoinknd16.nexus.look.HomePager
     EditorSheet("Home pages", onDismiss, showUndo = true) {
         Text(
-            "Extra pages start blank. Get to them with a swipe (Customise › Gestures › \"Page: …\" or Next page), a tile, or the dots above the tray. Swipe back the other way, press Back or Home to return.",
+            "Extra pages start blank. Swipe sideways to move between pages, like any launcher; Back or Home returns to the main page. Your left/right swipe gestures still work where there's no page to swipe to.",
             style = MaterialTheme.typography.bodySmall, color = Nx.Muted,
         )
         Spacer(Modifier.height(8.dp))
         ToggleRow("Page dots above the tray", home.showPageDots) { v -> c.editLook { it.copy(home = it.home.copy(showPageDots = v)) } }
+        ChoiceRow(
+            "Extra pages sit", listOf("auto", "left", "right"), home.pagesSide,
+            { when (it) { "left" -> "Left of main"; "right" -> "Right of main"; else -> "Auto" } },
+            subtitle = "Auto: on the left if your swipe-right gesture opens a page, otherwise on the right",
+        ) { v -> c.editLook { it.copy(home = it.home.copy(pagesSide = v)) } }
         HudLabel("Pages")
         Row(Modifier.fillMaxWidth().padding(vertical = 4.dp).holoPanel(if (pager.current == null) Nx.Cyan else Nx.CyanDim, glow = 0f).nexusPress({ pager.go("main"); onDismiss() }).padding(14.dp)) {
             Text("Main page", style = MaterialTheme.typography.titleMedium, color = Nx.Text, modifier = Modifier.weight(1f))
