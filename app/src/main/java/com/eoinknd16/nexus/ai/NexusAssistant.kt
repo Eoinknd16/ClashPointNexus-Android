@@ -37,6 +37,10 @@ sealed interface AiAction {
     data class Nexus(val screen: String) : AiAction
     /** Play / continue a movie or show from the Nexus TV section ([where] = "phone" or "tv"). */
     data class PlayMedia(val title: String, val where: String) : AiAction
+    /** Play music on Spotify. [type]: song, artist, album, playlist or any. */
+    data class PlayMusic(val query: String, val type: String) : AiAction
+    /** "Play X" when it's unclear whether X is a show/film or music: Nexus checks both. */
+    data class PlayAnything(val title: String, val where: String) : AiAction
 }
 
 data class AiReply(val text: String, val actions: List<AiAction>)
@@ -105,6 +109,8 @@ object NexusAssistant {
                         "web_search" -> actions += AiAction.Web(arg("query"))
                         "open_nexus" -> actions += AiAction.Nexus(arg("screen"))
                         "play_media" -> actions += AiAction.PlayMedia(arg("title"), arg("where"))
+                        "play_music" -> actions += AiAction.PlayMusic(arg("query"), arg("type").ifBlank { "any" })
+                        "play_anything" -> actions += AiAction.PlayAnything(arg("title"), arg("where"))
                     }
                 }
             }
@@ -143,7 +149,7 @@ object NexusAssistant {
         add(
             buildJsonObject {
                 put("name", "play_media")
-                put("description", "Play or continue a movie or TV show (the next episode for series) from the user's Nexus TV section.")
+                put("description", "Play or continue a MOVIE or TV SHOW (the next episode for series) from the user's Nexus TV section. Only for video: never songs, artists or albums.")
                 putJsonObject("input_schema") {
                     put("type", "object")
                     putJsonObject("properties") {
@@ -157,7 +163,46 @@ object NexusAssistant {
                 }
             },
         )
-        tool("web_search", "Search the web in the browser.", "query", "Search terms")
+        add(
+            buildJsonObject {
+                put("name", "play_music")
+                put(
+                    "description",
+                    "Play MUSIC on Spotify: a song, an artist, an album, one of the user's playlists, or \"liked songs\". " +
+                        "Use this when they mention a song/track/album/playlist/artist/band/music, say \"listen to\", \"by <artist>\" or \"on Spotify\", " +
+                        "or name something that is clearly a song or musician.",
+                )
+                putJsonObject("input_schema") {
+                    put("type", "object")
+                    putJsonObject("properties") {
+                        putJsonObject("query") { put("type", "string"); put("description", "What to search for, e.g. \"mr brightside the killers\", \"gym\", \"liked songs\"") }
+                        putJsonObject("type") {
+                            put("type", "string"); put("description", "What kind of thing it is, if known")
+                            putJsonArray("enum") { listOf("song", "artist", "album", "playlist", "any").forEach { add(kotlinx.serialization.json.JsonPrimitive(it)) } }
+                        }
+                    }
+                    putJsonArray("required") { add(kotlinx.serialization.json.JsonPrimitive("query")) }
+                }
+            },
+        )
+        add(
+            buildJsonObject {
+                put("name", "play_anything")
+                put("description", "\"Play <name>\" when you genuinely can't tell if <name> is a show/film or music. Nexus checks the TV section and Spotify and plays the better match.")
+                putJsonObject("input_schema") {
+                    put("type", "object")
+                    putJsonObject("properties") {
+                        putJsonObject("title") { put("type", "string"); put("description", "The name they said") }
+                        putJsonObject("where") {
+                            put("type", "string"); put("description", "phone, or tv if they said on the TV")
+                            putJsonArray("enum") { add(kotlinx.serialization.json.JsonPrimitive("phone")); add(kotlinx.serialization.json.JsonPrimitive("tv")) }
+                        }
+                    }
+                    putJsonArray("required") { add(kotlinx.serialization.json.JsonPrimitive("title")) }
+                }
+            },
+        )
+        tool("web_search", "Search the web in the browser. Never use this to play a show, film or song.", "query", "Search terms")
         tool(
             "open_nexus", "Open part of the Nexus launcher.", "screen", "Which part",
             listOf("tv", "customise", "settings", "app_drawer", "pc_controls"),

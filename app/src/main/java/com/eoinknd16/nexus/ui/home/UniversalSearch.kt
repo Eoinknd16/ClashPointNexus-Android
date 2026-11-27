@@ -242,13 +242,114 @@ fun UniversalSearch(runner: TileRunner, onNavigate: (String) -> Unit) {
         }
     }
 
-    /** "play the next episode of nocturne on the tv" -> ("nocturne", true). */
-    fun mediaRequest(part: String): Pair<String, Boolean>? {
-        val m = Regex("""^(?:play|watch|continue|resume|put on|stream)\s+(?:the\s+)?(?:next\s+(?:episode|ep)\s+(?:of\s+)?|(?:episode|ep)\s+of\s+|latest\s+(?:episode\s+)?(?:of\s+)?)?(.+?)(?:\s+on\s+(?:the\s+|my\s+)?(tv|telly|pc|phone|here))?$""").find(part.trim().lowercase()) ?: return null
-        val title = m.groupValues[1].trim().removeSuffix(" please").trim()
+    /**
+     * "play the next episode of nocturne on the tv" -> (nocturne, tv, TV)
+     * "play mr brightside on spotify" / "listen to the killers" -> (…, Music)
+     * "play nocturne" -> (nocturne, Either): decided at play time by what actually matches.
+     */
+    fun mediaRequest(part: String): MediaAsk? {
+        val t = part.trim().lowercase().removeSuffix(" please").removePrefix("please ").trim()
+        val m = Regex("""^(play|watch|continue|resume|put on|stream|listen to|shuffle)\s+(.+)$""").find(t) ?: return null
+        val verb = m.groupValues[1]
+        var rest = m.groupValues[2]
+        val where = Regex("""\s+on\s+(?:the\s+|my\s+)?(tv|telly|pc|phone|here|spotify)$""").find(rest)
+        val dest = where?.groupValues?.get(1)
+        if (where != null) rest = rest.substring(0, where.range.first)
+        val musicCue = Regex("""\b(song|songs|track|album|playlist|music|tunes|artist|band|spotify|my liked songs|liked songs)\b|\bby\s+\w""").containsMatchIn(rest)
+        val tvCue = Regex("""\b(episode|ep|season|series|show|movie|film|documentary)\b""").containsMatchIn(rest)
+        val kind = when {
+            dest == "spotify" || verb == "listen to" || verb == "shuffle" -> MediaKind.Music
+            dest == "tv" || dest == "telly" || dest == "pc" || verb == "watch" -> MediaKind.Tv
+            musicCue && !tvCue -> MediaKind.Music
+            tvCue -> MediaKind.Tv
+            else -> MediaKind.Either
+        }
+        val musicType = when {
+            Regex("""\bplaylist\b""").containsMatchIn(rest) -> "playlist"
+            Regex("""\balbum\b""").containsMatchIn(rest) -> "album"
+            Regex("""\b(artist|band)\b""").containsMatchIn(rest) -> "artist"
+            Regex("""\b(song|track)\b""").containsMatchIn(rest) -> "song"
+            else -> "any"
+        }
+        // Strip the cue words, keep what to look for.
+        val title = rest
+            .replace(Regex("""^(the\s+)?(next\s+(episode|ep)\s+(of\s+)?|(episode|ep)\s+of\s+|latest\s+(episode\s+)?(of\s+)?)"""), "")
+            .replace(Regex("""^(some\s+)?(the\s+)?(song|track|album|playlist|artist|band|movie|film|show|series)\s+(called\s+)?"""), "")
+            .replace(Regex("""\s+(song|track|album|playlist|movie|film|show|series)$"""), "")
+            .replace(Regex("""^my\s+"""), "")
+            .trim()
         if (title.isEmpty()) return null
-        val where = m.groupValues[2]
-        return title to (where == "tv" || where == "telly" || where == "pc")
+        return MediaAsk(title, dest == "tv" || dest == "telly" || dest == "pc", kind, musicType)
+    }
+
+    fun played(msg: String) {
+        android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
+        close()
+    }
+
+    /** Play something from Spotify via the control centre's connection (or open it in the Spotify app). */
+    fun playMusic(query: String, type: String = "any") {
+        aiScope.launch {
+            val sp = c.spotify
+            if (!sp.prefs.value.connected) {
+                // Not connected: hand the search to the Spotify app.
+                runCatching {
+                    context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("spotify:search:" + android.net.Uri.encode(query)))
+                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+                }
+                close(); return@launch
+            }
+            val q = query.lowercase()
+            if (q == "liked songs" || q == "liked" || q == "my likes") {
+                val liked = runCatching { sp.liked() }.getOrDefault(emptyList())
+                sp.playLiked(liked.firstOrNull(), liked); played("Playing your Liked Songs"); return@launch
+            }
+            // Your own playlists first ("play my gym playlist").
+            if (type == "playlist" || type == "any") {
+                val mine = runCatching { sp.playlists() }.getOrDefault(emptyList())
+                mine.map { it to titleMatch(it.name, query) }.filter { it.second >= 0.6f }.maxByOrNull { it.second }?.first?.let {
+                    sp.playContext(it.uri); played("Playing your playlist ${it.name}"); return@launch
+                }
+            }
+            val res = runCatching { sp.search(query) }.getOrNull()
+            if (res == null) { aiText = "Couldn't search Spotify"; return@launch }
+            val artist = res.collections.firstOrNull { it.kind == "artist" }
+            val album = res.collections.firstOrNull { it.kind == "album" }
+            val playlist = res.collections.firstOrNull { it.kind == "playlist" }
+            val track = res.tracks.maxByOrNull { titleMatch(it.name + " " + it.artists, query) }
+            when {
+                type == "artist" && artist != null -> { sp.playContext(artist.uri); played("Playing ${artist.name}") }
+                type == "album" && album != null -> { sp.playContext(album.uri); played("Playing ${album.name}") }
+                type == "playlist" && playlist != null -> { sp.playContext(playlist.uri); played("Playing ${playlist.name}") }
+                // "play the killers": an artist name that matches better than any song.
+                type == "any" && artist != null && titleMatch(artist.name, query) >= 0.95f &&
+                    (track == null || titleMatch(track.name, query) < 0.95f) -> { sp.playContext(artist.uri); played("Playing ${artist.name}") }
+                track != null -> { sp.playTracks(res.tracks.map { it.uri }, res.tracks.indexOf(track)); played("Playing ${track.name} by ${track.artists}") }
+                else -> aiText = "Couldn't find “$query” on Spotify"
+            }
+        }
+    }
+
+    /** "play X" with no clue whether it's a show or music: whichever actually matches better wins. */
+    fun playEither(title: String, onTv: Boolean) {
+        aiScope.launch {
+            aiText = "Looking for “$title”…"
+            val history = c.media.progress.value.values
+            val inHistory = history.maxOfOrNull { titleMatch(it.name, title) } ?: 0f
+            if (inHistory >= 0.8f) { playMedia(title, onTv); return@launch }
+            val tvBest = runCatching { c.media.search(title) }.getOrDefault(emptyList()).maxOfOrNull { titleMatch(it.name, title) } ?: 0f
+            val sp = c.spotify
+            val musicBest = if (!sp.prefs.value.connected) 0f else {
+                val mine = runCatching { sp.playlists() }.getOrDefault(emptyList()).maxOfOrNull { titleMatch(it.name, title) } ?: 0f
+                val res = runCatching { sp.search(title) }.getOrNull()
+                maxOf(
+                    mine + 0.1f,
+                    res?.tracks?.maxOfOrNull { maxOf(titleMatch(it.name, title), titleMatch(it.name + " " + it.artists, title)) } ?: 0f,
+                    res?.collections?.maxOfOrNull { titleMatch(it.name, title) } ?: 0f,
+                )
+            }
+            if (musicBest > tvBest + 0.05f) playMusic(title) else playMedia(title, onTv)
+        }
     }
 
     fun runAi(action: com.eoinknd16.nexus.ai.AiAction): String = when (action) {
@@ -281,6 +382,8 @@ fun UniversalSearch(runner: TileRunner, onNavigate: (String) -> Unit) {
         }
         is com.eoinknd16.nexus.ai.AiAction.Web -> { runner.webSearch(action.query); "Searching the web" }
         is com.eoinknd16.nexus.ai.AiAction.PlayMedia -> { playMedia(action.title, action.where == "tv"); "Playing ${action.title}" }
+        is com.eoinknd16.nexus.ai.AiAction.PlayMusic -> { playMusic(action.query, action.type); "" }
+        is com.eoinknd16.nexus.ai.AiAction.PlayAnything -> { playEither(action.title, action.where == "tv"); "" }
         is com.eoinknd16.nexus.ai.AiAction.Nexus -> {
             when (action.screen) {
                 "tv" -> onNavigate(Routes.TV)
@@ -326,9 +429,14 @@ fun UniversalSearch(runner: TileRunner, onNavigate: (String) -> Unit) {
         return parts.map { part ->
             val stripped = part.replace(Regex("^(please\\s+)?(open|launch|start|run|go to|show|switch to)\\s+"), "").trim()
             // "play X" / "watch X" / "next episode of X": an app called X opens; otherwise it's a show or film.
-            mediaRequest(part)?.let { (title, onTv) ->
-                val appHit = apps.map { it to fuzzyScore(it.label, title) }.filter { it.second >= 700 }.maxByOrNull { it.second }?.first
-                if (appHit == null) return@map "Play ${title.replaceFirstChar { it.uppercase() }}" + (if (onTv) " on the TV" else "") to { playMedia(title, onTv) }
+            mediaRequest(part)?.let { ask ->
+                val appHit = apps.map { it to fuzzyScore(it.label, ask.title) }.filter { it.second >= 700 }.maxByOrNull { it.second }?.first
+                val name = ask.title.replaceFirstChar { it.uppercase() }
+                if (appHit == null) return@map when (ask.kind) {
+                    MediaKind.Music -> "Play $name on Spotify" to { playMusic(ask.title, ask.musicType) }
+                    MediaKind.Tv -> "Watch $name" + (if (ask.onTv) " on the TV" else "") to { playMedia(ask.title, ask.onTv) }
+                    MediaKind.Either -> "Play $name (show or music, whichever matches)" to { playEither(ask.title, ask.onTv) }
+                }
             }
             val cmd = allCmds.map { it to maxOf(fuzzyScore(it.label, part), fuzzyScore(it.label, stripped)) }.filter { it.second >= 600 }.maxByOrNull { it.second }?.first
             val app = apps.map { it to fuzzyScore(it.label, stripped) }.filter { it.second >= 500 }.maxByOrNull { it.second }?.first
@@ -343,7 +451,7 @@ fun UniversalSearch(runner: TileRunner, onNavigate: (String) -> Unit) {
     /** Sounds like an instruction rather than something to look up. */
     fun soundsLikeRequest(text: String): Boolean {
         val t = text.lowercase().trim()
-        val verbs = listOf("play", "watch", "continue", "resume", "open", "launch", "start", "run", "wake", "turn", "switch", "go to", "shut", "sleep", "restart", "lock", "play", "show", "put", "set", "take me", "nexus")
+        val verbs = listOf("play", "watch", "listen", "shuffle", "continue", "resume", "open", "launch", "start", "run", "wake", "turn", "switch", "go to", "shut", "sleep", "restart", "lock", "play", "show", "put", "set", "take me", "nexus")
         return verbs.any { t.startsWith(it) } || t.contains(" and ")
     }
 
@@ -646,4 +754,19 @@ private fun ContactRow(c: Contact, onOpen: () -> Unit, onCall: (() -> Unit)?) {
             }
         }
     }
+}
+
+enum class MediaKind { Tv, Music, Either }
+data class MediaAsk(val title: String, val onTv: Boolean, val kind: MediaKind, val musicType: String)
+
+/** 0..1: how well a name matches what was asked for (ignores case, punctuation and "the"). */
+fun titleMatch(name: String, query: String): Float {
+    fun norm(x: String) = x.lowercase().replace(Regex("[^a-z0-9 ]"), " ").split(Regex("\\s+")).filter { it.isNotBlank() && it != "the" }
+    val a = norm(name); val b = norm(query)
+    if (a.isEmpty() || b.isEmpty()) return 0f
+    if (a == b) return 1f
+    val aj = a.joinToString(" "); val bj = b.joinToString(" ")
+    if (aj.startsWith(bj) || bj.startsWith(aj)) return 0.9f
+    val common = b.count { it in a }
+    return common.toFloat() / maxOf(a.size, b.size)
 }

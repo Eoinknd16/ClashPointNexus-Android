@@ -69,7 +69,10 @@ object OnDeviceAi {
             appendLine("- pc: arg = one of wake, sleep, restart, shutdown, open_remote, open_tv, quick_menu")
             appendLine("- go_to_page: arg = main, next, prev or a page name")
             appendLine("- phone: arg = one of notifications, quick_settings, lock_screen, wifi, bluetooth, display, sound, battery, settings")
-            appendLine("- play_media: arg = movie or show name (plays the next episode); add \" @tv\" to the arg to play it on the TV")
+            appendLine("- play_media: arg = MOVIE or TV SHOW name (plays the next episode); add \" @tv\" to the arg to play it on the TV. Video only.")
+            appendLine("- play_music: arg = what to play on Spotify, starting with its kind: \"song: mr brightside\", \"artist: the killers\", \"album: ok computer\", \"playlist: gym\", or \"liked songs\"")
+            appendLine("- play_anything: arg = the name, when you can't tell if it's a show/film or music (Nexus checks both)")
+            appendLine("Songs, artists, bands, albums, playlists, music, \"listen to\", \"by <artist>\", \"on spotify\" -> play_music. Episodes, seasons, shows, series, movies, films, \"watch\" -> play_media. Never use web_search to play things.")
             appendLine("- web_search: arg = search terms")
             appendLine("- open_nexus: arg = one of tv, customise, settings, app_drawer, pc_controls")
             appendLine("Use an empty actions list if the user only asked a question; then answer it in say.")
@@ -105,6 +108,12 @@ object OnDeviceAi {
                 "web_search" -> AiAction.Web(arg)
                 "open_nexus" -> AiAction.Nexus(arg)
                 "play_media" -> if (arg.endsWith("@tv")) AiAction.PlayMedia(arg.removeSuffix("@tv").trim(), "tv") else AiAction.PlayMedia(arg, "phone")
+                "play_music" -> {
+                    val m = Regex("^(song|track|artist|band|album|playlist)\\s*:\\s*(.+)$", RegexOption.IGNORE_CASE).find(arg.trim())
+                    if (m != null) AiAction.PlayMusic(m.groupValues[2], m.groupValues[1].lowercase().replace("track", "song").replace("band", "artist"))
+                    else AiAction.PlayMusic(arg, "any")
+                }
+                "play_anything" -> if (arg.endsWith("@tv")) AiAction.PlayAnything(arg.removeSuffix("@tv").trim(), "tv") else AiAction.PlayAnything(arg, "phone")
                 else -> null
             }
         }
