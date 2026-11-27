@@ -200,7 +200,12 @@ fun UniversalSearch(runner: TileRunner, onNavigate: (String) -> Unit) {
     }
 
     // ---- Ask Nexus (Claude) ----
-    val ai by c.aiPrefs.state.collectAsStateWithLifecycle()
+    val aiPrefs by c.aiPrefs.state.collectAsStateWithLifecycle()
+    val deviceAi by com.eoinknd16.nexus.ai.OnDeviceAi.state.collectAsStateWithLifecycle()
+    LaunchedEffect(open) { if (open) com.eoinknd16.nexus.ai.OnDeviceAi.refresh() }
+    // Show Ask Nexus when the chosen engine can actually answer.
+    val aiOn = if (aiPrefs.engine == "claude") aiPrefs.claudeReady else deviceAi == com.eoinknd16.nexus.ai.OnDeviceAi.State.Available
+    val ai = aiPrefs
     var aiBusy by remember { mutableStateOf(false) }
     var aiText by remember { mutableStateOf<String?>(null) }
     var aiConfirm by remember { mutableStateOf<String?>(null) } // pending PC restart/shutdown
@@ -295,7 +300,7 @@ fun UniversalSearch(runner: TileRunner, onNavigate: (String) -> Unit) {
                     Icon(Icons.Filled.Search, null, tint = Nx.Cyan)
                     Spacer(Modifier.width(12.dp))
                     Box(Modifier.weight(1f)) {
-                        if (query.isEmpty()) Text(if (ai.ready) "Search or ask Nexus anything…" else "Apps, contacts, commands, maths, shows, web…", color = Nx.Muted, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
+                        if (query.isEmpty()) Text(if (aiOn) "Search or ask Nexus anything…" else "Apps, contacts, commands, maths, shows, web…", color = Nx.Muted, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
                         BasicTextField(
                             value = query,
                             onValueChange = { query = it },
@@ -323,9 +328,9 @@ fun UniversalSearch(runner: TileRunner, onNavigate: (String) -> Unit) {
                             Group("Your apps") { AppRow(dock) { c.apps.launch(it); close() } }
                         }
                     }
-                    if (ai.ready && q.length >= 3) {
+                    if (aiOn && q.length >= 3) {
                         Group("Ask Nexus") {
-                            ResultRow(Icons.Filled.AutoAwesome, if (aiBusy) "Thinking…" else "Ask: “$q”", if (aiText == null) "Claude · can open apps, control the PC, switch pages…" else null, accent = Nx.Magenta) { askAi() }
+                            ResultRow(Icons.Filled.AutoAwesome, if (aiBusy) "Thinking…" else "Ask: “$q”", if (aiText == null) (if (aiPrefs.engine == "claude") "Claude" else "On-device AI") + " · opens apps, controls the PC, switches pages…" else null, accent = Nx.Magenta) { askAi() }
                             aiText?.let { t -> Text(t, style = MaterialTheme.typography.bodyLarge, color = Nx.Text, modifier = Modifier.padding(vertical = 4.dp)) }
                             aiConfirm?.let { act ->
                                 ResultRow(Icons.Filled.PowerSettingsNew, "Confirm: ${if (act == "shutdown") "shut down" else "restart"} the PC", "Has a 20 s cancel on the PC", accent = Nx.Danger) {

@@ -19,8 +19,12 @@ import kotlinx.serialization.json.putJsonObject
 data class AiPrefs(
     val apiKey: String = "",
     val model: String = "claude-haiku-5-5",
+    /** "device" = the phone's built-in Gemini Nano, "claude" = your Claude API key. */
+    val engine: String = "device",
 ) {
-    val ready: Boolean get() = apiKey.isNotBlank()
+    val claudeReady: Boolean get() = apiKey.isNotBlank()
+    /** Whether Ask Nexus should appear (the on-device check happens when asking). */
+    val ready: Boolean get() = if (engine == "claude") claudeReady else true
 }
 
 /** Something the assistant decided to do; Nexus carries it out (power actions ask first). */
@@ -46,6 +50,7 @@ object NexusAssistant {
     private const val URL = "https://api.anthropic.com/v1/messages"
 
     suspend fun ask(prefs: AiPrefs, question: String, apps: List<String>, pages: List<String>, pcs: List<String>): AiReply {
+        if (prefs.engine != "claude" || !prefs.claudeReady) return OnDeviceAi.ask(question, apps, pages, pcs)
         val system = buildString {
             appendLine("You are Nexus, the assistant built into an Android launcher. Be brief: one or two short sentences.")
             appendLine("When the user wants something done, call the tools (several if needed) and say in a few words what you did.")

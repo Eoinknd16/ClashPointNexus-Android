@@ -510,12 +510,15 @@ private fun PasswordField(label: String, value: String, onChange: (String) -> Un
 }
 
 
-/** "Ask Nexus": your own Claude API key (kept on this phone only). */
+/** "Ask Nexus": the phone's built-in AI (default) or your own Claude API key. */
 @Composable
 private fun AiSection() {
     val c = appContainer()
     val scope = rememberCoroutineScope()
     val ai by c.aiPrefs.state.collectAsStateWithLifecycle()
+    val device by com.eoinknd16.nexus.ai.OnDeviceAi.state.collectAsStateWithLifecycle()
+    val bytes by com.eoinknd16.nexus.ai.OnDeviceAi.progress.collectAsStateWithLifecycle()
+    LaunchedEffect(Unit) { com.eoinknd16.nexus.ai.OnDeviceAi.refresh() }
     var key by remember { mutableStateOf("") }
     var status by remember { mutableStateOf<String?>(null) }
     Column {
@@ -523,29 +526,46 @@ private fun AiSection() {
         Spacer(Modifier.height(10.dp))
         HoloPanel(Modifier.fillMaxWidth()) {
             Text(
-                if (ai.ready) "Connected · ${ai.model}" else "Not set up",
-                style = MaterialTheme.typography.titleMedium, color = if (ai.ready) Nx.Lime else Nx.Text,
+                "Type a request in search (\"open spotify and wake the pc\") and tap Ask.",
+                style = MaterialTheme.typography.bodyMedium, color = Nx.Muted,
             )
-            Text(
-                "Type a request in search (\"open spotify and wake the pc\") and tap Ask. Uses your own Claude API key from console.anthropic.com; it's stored only on this phone and sent only to Anthropic.",
-                style = MaterialTheme.typography.labelSmall, color = Nx.Muted,
-            )
-            Spacer(Modifier.height(10.dp))
-            com.eoinknd16.nexus.ui.settings.TextRow(if (ai.ready) "Replace API key" else "API key", key, "sk-ant-…") { key = it.trim() }
+            Spacer(Modifier.height(8.dp))
             com.eoinknd16.nexus.ui.settings.ChoiceRow(
-                "Model", listOf("claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5"), ai.model,
-                { when (it) { "claude-haiku-5-5" -> "Haiku (fast)"; "claude-sonnet-5-5" -> "Sonnet"; else -> "Opus (smartest)" } },
-            ) { m -> scope.launch { c.aiPrefs.update { it.copy(model = m) } } }
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                if (key.isNotBlank()) NexusButton("Save key", filled = true) {
-                    scope.launch {
-                        c.aiPrefs.update { it.copy(apiKey = key) }
-                        key = ""
-                        status = "Saved. Try it from search."
+                "AI", listOf("device", "claude"), ai.engine,
+                { if (it == "device") "Phone's built-in" else "Claude (API key)" },
+            ) { e -> scope.launch { c.aiPrefs.update { it.copy(engine = e) } } }
+            if (ai.engine == "device") {
+                Text(
+                    "Gemini Nano, built into the phone. Runs on the phone: free, private, works offline. Simpler requests work best.",
+                    style = MaterialTheme.typography.labelSmall, color = Nx.Muted,
+                )
+                Text(hud("Status: ${device.label}" + if (device == com.eoinknd16.nexus.ai.OnDeviceAi.State.Downloading && bytes > 0) " · ${bytes / 1_000_000} MB" else ""),
+                    style = MaterialTheme.typography.labelMedium, color = if (device == com.eoinknd16.nexus.ai.OnDeviceAi.State.Available) Nx.Lime else Nx.Amber)
+                if (device == com.eoinknd16.nexus.ai.OnDeviceAi.State.Downloadable) {
+                    NexusButton("Download the AI model", filled = true) {
+                        scope.launch { status = if (com.eoinknd16.nexus.ai.OnDeviceAi.download()) "Ready to use" else "Download didn't finish; try again on Wi-Fi" }
                     }
                 }
-                if (ai.ready) NexusButton("Remove key", accent = Nx.Danger) {
-                    scope.launch { c.aiPrefs.update { it.copy(apiKey = "") }; status = "Key removed" }
+                if (device == com.eoinknd16.nexus.ai.OnDeviceAi.State.Unavailable) {
+                    Text("Not available here. On supported phones, check AICore is up to date in the Play Store. Or switch to Claude.", style = MaterialTheme.typography.labelSmall, color = Nx.Muted)
+                }
+            } else {
+                Text(
+                    if (ai.claudeReady) "Connected · ${ai.model}" else "Needs your API key from console.anthropic.com (stored only on this phone, sent only to Anthropic).",
+                    style = MaterialTheme.typography.labelSmall, color = if (ai.claudeReady) Nx.Lime else Nx.Muted,
+                )
+                com.eoinknd16.nexus.ui.settings.TextRow(if (ai.claudeReady) "Replace API key" else "API key", key, "sk-ant-…") { key = it.trim() }
+                com.eoinknd16.nexus.ui.settings.ChoiceRow(
+                    "Model", listOf("claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5"), ai.model,
+                    { when (it) { "claude-haiku-5-5" -> "Haiku (fast)"; "claude-sonnet-5-5" -> "Sonnet"; else -> "Opus (smartest)" } },
+                ) { m -> scope.launch { c.aiPrefs.update { it.copy(model = m) } } }
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    if (key.isNotBlank()) NexusButton("Save key", filled = true) {
+                        scope.launch { c.aiPrefs.update { it.copy(apiKey = key) }; key = ""; status = "Saved. Try it from search." }
+                    }
+                    if (ai.claudeReady) NexusButton("Remove key", accent = Nx.Danger) {
+                        scope.launch { c.aiPrefs.update { it.copy(apiKey = "") }; status = "Key removed" }
+                    }
                 }
             }
             status?.let { Text(hud(it), style = MaterialTheme.typography.labelSmall, color = Nx.Amber) }
