@@ -975,12 +975,20 @@ private fun PostersView(b: HomeBlock.Posters, vm: HomeViewModel, headings: Boole
     val nav = LocalNav.current
     val recent by vm.continueWatching.collectAsStateWithLifecycle()
     val library by vm.library.collectAsStateWithLifecycle()
+    val c = appContainer()
+    val picks by androidx.compose.runtime.produceState<List<com.eoinknd16.nexus.media.MediaRepository.Pick>>(emptyList(), b.source, recent.size) {
+        if (b.source == PosterSource.ForYou) value = runCatching { c.media.recommendations(b.count.coerceAtLeast(1)) }.getOrDefault(emptyList())
+    }
     val items: List<Pair<CatalogItem, Float?>> = when (b.source) {
         PosterSource.Recent -> recent.map { CatalogItem(it.id, it.type, it.name, it.poster) to it.fraction }
         PosterSource.Library -> library.map { it to null }
+        PosterSource.ForYou -> picks.map { it.item to null }
     }.take(b.count.coerceAtLeast(1))
     if (items.isEmpty()) {
-        if (editMode) Text("${b.source.label}: nothing yet", color = Nx.Muted, style = MaterialTheme.typography.bodyMedium)
+        if (editMode) Text(
+            if (b.source == PosterSource.ForYou) "Picked for you: appears once you've watched a few things in TV" else "${b.source.label}: nothing yet",
+            color = Nx.Muted, style = MaterialTheme.typography.bodyMedium,
+        )
         return
     }
     Column {

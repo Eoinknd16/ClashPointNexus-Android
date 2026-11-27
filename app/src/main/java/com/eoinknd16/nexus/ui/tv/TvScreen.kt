@@ -52,6 +52,7 @@ import com.eoinknd16.nexus.look.BoardMode
 import com.eoinknd16.nexus.look.LookState
 import com.eoinknd16.nexus.look.moved
 import com.eoinknd16.nexus.media.CatalogItem
+import com.eoinknd16.nexus.ui.appContainer
 import com.eoinknd16.nexus.media.CatalogRow
 import com.eoinknd16.nexus.media.CatalogType
 import com.eoinknd16.nexus.media.MediaRepository
@@ -246,6 +247,11 @@ fun TvScreen() {
                 progressItems(progress.values.filter { it.type == type }.sortedByDescending { it.updatedAt }.take(20))
             }
             val tabRows = rows[tab] ?: TabRows()
+            // "Picked for you" from your watch history, for this tab's type.
+            val cc = appContainer()
+            val picks by androidx.compose.runtime.produceState<List<CatalogItem>>(emptyList(), tab, progress.size) {
+                value = runCatching { cc.media.recommendations(40) }.getOrDefault(emptyList()).map { it.item }.filter { it.type == type }.take(20)
+            }
             val all = ordered(tabRows.rows, tv.rowOrder)
             val shown = if (editing) all else all.filter { it.key !in tv.hiddenRows }
             val order = shown.map { it.key }
@@ -261,6 +267,9 @@ fun TvScreen() {
                     item(key = "continue") {
                         PosterRow("Continue watching", continueItems, { item -> progress["${item.type}:${item.id}"]?.fraction }, onItem = open)
                     }
+                }
+                if (picks.isNotEmpty()) {
+                    item(key = "foryou") { PosterRow("Picked for you", picks, onItem = open) }
                 }
                 if (tabRows.loading) item { LoadingBlock("Scanning catalogs…") }
                 items(shown, key = { it.key }) { row ->

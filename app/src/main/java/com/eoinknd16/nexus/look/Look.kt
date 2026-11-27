@@ -426,7 +426,7 @@ enum class SearchEngine(val label: String, val url: String) {
 }
 
 @Serializable
-enum class PosterSource(val label: String) { Recent("Recently watched"), Library("Your library") }
+enum class PosterSource(val label: String) { Recent("Recently watched"), Library("Your library"), ForYou("Picked for you") }
 
 /** Where on screen a swipe has to start for it to count. */
 @Serializable

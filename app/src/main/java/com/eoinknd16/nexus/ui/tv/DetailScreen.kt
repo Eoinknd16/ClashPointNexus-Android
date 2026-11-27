@@ -87,6 +87,13 @@ fun DetailScreen(type: CatalogType, id: String) {
         playback.start(req)
         nav.navigate(Routes.PLAYER)
     }
+    // "Play the next episode of X" from search / Ask Nexus: start as soon as the title loads.
+    androidx.compose.runtime.LaunchedEffect(state.meta) {
+        val meta = state.meta ?: return@LaunchedEffect
+        val req = AutoPlay.consume(type, id) ?: return@LaunchedEffect
+        val ep = if (meta.episodes.isNotEmpty()) vm.nextEpisode() else null
+        if (req.onTv) vm.sendToTv(ep) else vm.play(ep, startPlayer)
+    }
 
     NexusBackdrop(intensity = 0.4f) {
         val meta = state.meta
@@ -382,4 +389,13 @@ private fun StreamRow(s: StreamOption, pcPaired: Boolean, onPlay: () -> Unit, on
             }
         }
     }
+}
+
+
+/** A pending "play this as soon as it opens" request (from search / Ask Nexus). */
+object AutoPlay {
+    data class Request(val key: String, val onTv: Boolean)
+    private var pending: Request? = null
+    fun request(type: CatalogType, id: String, onTv: Boolean) { pending = Request("${type.name}:$id", onTv) }
+    fun consume(type: CatalogType, id: String): Request? = pending?.takeIf { it.key == "${type.name}:$id" }?.also { pending = null }
 }

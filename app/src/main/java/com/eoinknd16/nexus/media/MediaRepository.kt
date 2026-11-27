@@ -97,6 +97,49 @@ class MediaRepository(
         tasks.awaitAll().flatten().distinctBy { "${it.type}:${it.id}" }
     }
 
+    // ---- Recommendations ------------------------------------------------------
+
+    /** A suggestion and why ("Because you watched Severance"). */
+    data class Pick(val item: CatalogItem, val reason: String)
+
+    private var picksCache: Pair<Long, List<Pick>>? = null
+
+    /**
+     * "What to watch next", from your actual history: works out the genres you
+     * watch most (recent and finished titles count more), pulls the top titles
+     * in those genres, scores them by how well they match, and leaves out
+     * anything you've already watched. Cached for a few hours.
+     */
+    suspend fun recommendations(max: Int = 20, force: Boolean = false): List<Pick> = coroutineScope {
+        picksCache?.takeIf { !force && System.currentTimeMillis() - it.first < 3 * 3_600_000 }?.let { return@coroutineScope it.second.take(max) }
+        val history = progress.value.values.sortedByDescending { it.updatedAt }.take(15)
+        if (history.isEmpty()) return@coroutineScope emptyList()
+        val watched = progress.value.values.map { "${it.type}:${it.id}" }.toSet()
+        // Genres of what you've watched (meta is cached after the first look).
+        val metas = history.map { h -> async { h to runCatching { meta(h.type, h.id) }.getOrNull() } }.awaitAll()
+        val weights = HashMap<Pair<CatalogType, String>, Double>()
+        metas.forEachIndexed { rank, (h, m) ->
+            val w = (1.0 / (1 + rank * 0.35)) * (if (h.fraction > 0.6f || (h.episode ?: 0) > 2) 1.5 else 1.0)
+            m?.item?.genres?.forEach { g -> weights.merge(h.type to g, w, Double::plus) }
+        }
+        if (weights.isEmpty()) return@coroutineScope emptyList()
+        val top = weights.entries.sortedByDescending { it.value }.take(4)
+        val candidates = top.map { (k, _) ->
+            async { runCatching { StremioProtocol.catalog(StremioProtocol.CINEMETA, k.first, "top", genre = k.second) }.getOrDefault(emptyList()) }
+        }.awaitAll().flatten().distinctBy { "${it.type}:${it.id}" }
+            .filter { "${it.type}:${it.id}" !in watched }
+        val picks = candidates.map { item ->
+            val genreScore = item.genres.sumOf { g -> weights[item.type to g] ?: 0.0 }
+            val rating = item.imdbRating?.toDoubleOrNull() ?: 6.5
+            val because = metas.filter { (h, m) -> h.type == item.type && m?.item?.genres?.any { it in item.genres } == true }
+                .maxByOrNull { (_, m) -> m?.item?.genres?.count { it in item.genres } ?: 0 }?.first?.name
+            Triple(item, genreScore + (rating - 6.5) * 0.4, because)
+        }.sortedByDescending { it.second }
+            .map { (item, _, because) -> Pick(item, if (because != null) "Because you watched $because" else "Popular in genres you like") }
+        picksCache = System.currentTimeMillis() to picks
+        picks.take(max)
+    }
+
     // ---- Meta -----------------------------------------------------------------
 
     private val metaCache = HashMap<String, MetaDetail>()

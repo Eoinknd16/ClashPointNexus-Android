@@ -69,6 +69,7 @@ object OnDeviceAi {
             appendLine("- pc: arg = one of wake, sleep, restart, shutdown, open_remote, open_tv, quick_menu")
             appendLine("- go_to_page: arg = main, next, prev or a page name")
             appendLine("- phone: arg = one of notifications, quick_settings, lock_screen, wifi, bluetooth, display, sound, battery, settings")
+            appendLine("- play_media: arg = movie or show name (plays the next episode); add \" @tv\" to the arg to play it on the TV")
             appendLine("- web_search: arg = search terms")
             appendLine("- open_nexus: arg = one of tv, customise, settings, app_drawer, pc_controls")
             appendLine("Use an empty actions list if the user only asked a question; then answer it in say.")
@@ -103,6 +104,7 @@ object OnDeviceAi {
                 "phone" -> AiAction.Phone(arg)
                 "web_search" -> AiAction.Web(arg)
                 "open_nexus" -> AiAction.Nexus(arg)
+                "play_media" -> if (arg.endsWith("@tv")) AiAction.PlayMedia(arg.removeSuffix("@tv").trim(), "tv") else AiAction.PlayMedia(arg, "phone")
                 else -> null
             }
         }

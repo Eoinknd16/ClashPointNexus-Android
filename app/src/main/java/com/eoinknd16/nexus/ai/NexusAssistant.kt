@@ -35,6 +35,8 @@ sealed interface AiAction {
     data class Phone(val action: String) : AiAction
     data class Web(val query: String) : AiAction
     data class Nexus(val screen: String) : AiAction
+    /** Play / continue a movie or show from the Nexus TV section ([where] = "phone" or "tv"). */
+    data class PlayMedia(val title: String, val where: String) : AiAction
 }
 
 data class AiReply(val text: String, val actions: List<AiAction>)
@@ -102,6 +104,7 @@ object NexusAssistant {
                         "phone" -> actions += AiAction.Phone(arg("action"))
                         "web_search" -> actions += AiAction.Web(arg("query"))
                         "open_nexus" -> actions += AiAction.Nexus(arg("screen"))
+                        "play_media" -> actions += AiAction.PlayMedia(arg("title"), arg("where"))
                     }
                 }
             }
@@ -136,6 +139,23 @@ object NexusAssistant {
         tool(
             "phone", "Phone shortcuts.", "action", "What to open",
             listOf("notifications", "quick_settings", "lock_screen", "wifi", "bluetooth", "display", "sound", "battery", "settings"),
+        )
+        add(
+            buildJsonObject {
+                put("name", "play_media")
+                put("description", "Play or continue a movie or TV show (the next episode for series) from the user's Nexus TV section.")
+                putJsonObject("input_schema") {
+                    put("type", "object")
+                    putJsonObject("properties") {
+                        putJsonObject("title") { put("type", "string"); put("description", "Movie or show name") }
+                        putJsonObject("where") {
+                            put("type", "string"); put("description", "phone, or tv for the living-room PC")
+                            putJsonArray("enum") { add(kotlinx.serialization.json.JsonPrimitive("phone")); add(kotlinx.serialization.json.JsonPrimitive("tv")) }
+                        }
+                    }
+                    putJsonArray("required") { add(kotlinx.serialization.json.JsonPrimitive("title")) }
+                }
+            },
         )
         tool("web_search", "Search the web in the browser.", "query", "Search terms")
         tool(

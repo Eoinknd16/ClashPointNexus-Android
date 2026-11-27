@@ -223,6 +223,34 @@ fun UniversalSearch(runner: TileRunner, onNavigate: (String) -> Unit) {
     var aiConfirm by remember { mutableStateOf<String?>(null) } // pending PC restart/shutdown
     val aiScope = androidx.compose.runtime.rememberCoroutineScope()
     LaunchedEffect(q) { aiText = null; aiConfirm = null }
+    /** Find a title (your history first, then your addons) and play it / its next episode. */
+    fun playMedia(title: String, onTv: Boolean) {
+        aiScope.launch {
+            val history = c.media.progress.value.values.sortedByDescending { it.updatedAt }
+            val fromHistory = history.map { it to fuzzyScore(it.name, title) }.filter { it.second >= 500 }.maxByOrNull { it.second }?.first
+            val hit = if (fromHistory != null) fromHistory.type to fromHistory.id
+            else runCatching { c.media.search(title) }.getOrDefault(emptyList())
+                .maxByOrNull { fuzzyScore(it.name, title) + if (it.type == com.eoinknd16.nexus.media.CatalogType.series) 5 else 0 }
+                ?.let { it.type to it.id }
+            if (hit == null) {
+                aiText = "Couldn't find “$title” in your TV addons"
+                return@launch
+            }
+            com.eoinknd16.nexus.ui.tv.AutoPlay.request(hit.first, hit.second, onTv)
+            onNavigate(Routes.detail(hit.first.name, hit.second))
+            close()
+        }
+    }
+
+    /** "play the next episode of nocturne on the tv" -> ("nocturne", true). */
+    fun mediaRequest(part: String): Pair<String, Boolean>? {
+        val m = Regex("""^(?:play|watch|continue|resume|put on|stream)\s+(?:the\s+)?(?:next\s+(?:episode|ep)\s+(?:of\s+)?|(?:episode|ep)\s+of\s+|latest\s+(?:episode\s+)?(?:of\s+)?)?(.+?)(?:\s+on\s+(?:the\s+|my\s+)?(tv|telly|pc|phone|here))?$""").find(part.trim().lowercase()) ?: return null
+        val title = m.groupValues[1].trim().removeSuffix(" please").trim()
+        if (title.isEmpty()) return null
+        val where = m.groupValues[2]
+        return title to (where == "tv" || where == "telly" || where == "pc")
+    }
+
     fun runAi(action: com.eoinknd16.nexus.ai.AiAction): String = when (action) {
         is com.eoinknd16.nexus.ai.AiAction.OpenApp -> {
             val app = apps.map { it to fuzzyScore(it.label, action.name) }.filter { it.second > 0 }.maxByOrNull { it.second }?.first
@@ -252,6 +280,7 @@ fun UniversalSearch(runner: TileRunner, onNavigate: (String) -> Unit) {
             "Opened ${action.action.replace('_', ' ')}"
         }
         is com.eoinknd16.nexus.ai.AiAction.Web -> { runner.webSearch(action.query); "Searching the web" }
+        is com.eoinknd16.nexus.ai.AiAction.PlayMedia -> { playMedia(action.title, action.where == "tv"); "Playing ${action.title}" }
         is com.eoinknd16.nexus.ai.AiAction.Nexus -> {
             when (action.screen) {
                 "tv" -> onNavigate(Routes.TV)
@@ -296,6 +325,11 @@ fun UniversalSearch(runner: TileRunner, onNavigate: (String) -> Unit) {
         val allCmds = commands + LookState.look.home.pages.map { p -> Command("Go to ${p.name}", "page ${p.name}", Icons.Filled.ViewCarousel) { HomePager.go(p.id) } }
         return parts.map { part ->
             val stripped = part.replace(Regex("^(please\\s+)?(open|launch|start|run|go to|show|switch to)\\s+"), "").trim()
+            // "play X" / "watch X" / "next episode of X": an app called X opens; otherwise it's a show or film.
+            mediaRequest(part)?.let { (title, onTv) ->
+                val appHit = apps.map { it to fuzzyScore(it.label, title) }.filter { it.second >= 700 }.maxByOrNull { it.second }?.first
+                if (appHit == null) return@map "Play ${title.replaceFirstChar { it.uppercase() }}" + (if (onTv) " on the TV" else "") to { playMedia(title, onTv) }
+            }
             val cmd = allCmds.map { it to maxOf(fuzzyScore(it.label, part), fuzzyScore(it.label, stripped)) }.filter { it.second >= 600 }.maxByOrNull { it.second }?.first
             val app = apps.map { it to fuzzyScore(it.label, stripped) }.filter { it.second >= 500 }.maxByOrNull { it.second }?.first
             when {
@@ -309,7 +343,7 @@ fun UniversalSearch(runner: TileRunner, onNavigate: (String) -> Unit) {
     /** Sounds like an instruction rather than something to look up. */
     fun soundsLikeRequest(text: String): Boolean {
         val t = text.lowercase().trim()
-        val verbs = listOf("open", "launch", "start", "run", "wake", "turn", "switch", "go to", "shut", "sleep", "restart", "lock", "play", "show", "put", "set", "take me", "nexus")
+        val verbs = listOf("play", "watch", "continue", "resume", "open", "launch", "start", "run", "wake", "turn", "switch", "go to", "shut", "sleep", "restart", "lock", "play", "show", "put", "set", "take me", "nexus")
         return verbs.any { t.startsWith(it) } || t.contains(" and ")
     }
 
@@ -318,6 +352,11 @@ fun UniversalSearch(runner: TileRunner, onNavigate: (String) -> Unit) {
      * the AI if it sounds like an instruction, open a clearly-matching app,
      * and only otherwise search the web.
      */
+    val wantsPicks = Regex("(what should i watch|something to watch|recommend|suggest).*", RegexOption.IGNORE_CASE).matches(q)
+    val picks by produceState<List<com.eoinknd16.nexus.media.MediaRepository.Pick>>(emptyList(), wantsPicks) {
+        value = if (wantsPicks) runCatching { c.media.recommendations(10) }.getOrDefault(emptyList()) else emptyList()
+    }
+
     fun runTop() {
         if (q.isEmpty()) return
         val plan = localPlan(q)
@@ -405,6 +444,19 @@ fun UniversalSearch(runner: TileRunner, onNavigate: (String) -> Unit) {
                                     runner.runAction(TileAction(TileAction.Kind.PcPower, act))
                                     aiConfirm = null
                                     close()
+                                }
+                            }
+                        }
+                    }
+                    if (picks.isNotEmpty()) {
+                        Group("Picked for you") {
+                            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                picks.forEach { p ->
+                                    Column(Modifier.width(100.dp).nexusPress({ onNavigate(Routes.detail(p.item.type.name, p.item.id)); close() })) {
+                                        AsyncImage(p.item.poster, p.item.name, modifier = Modifier.width(100.dp).height(148.dp).clip(nexusShape(0.4f)).background(Nx.Deep))
+                                        Text(p.item.name, style = MaterialTheme.typography.labelSmall, color = Nx.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text(p.reason, style = MaterialTheme.typography.labelSmall, color = Nx.Muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                    }
                                 }
                             }
                         }
