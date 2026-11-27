@@ -39,6 +39,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Apps
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.Call
@@ -104,6 +105,7 @@ import com.eoinknd16.nexus.ui.theme.Nx
 import com.eoinknd16.nexus.ui.theme.hud
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.jsonArray
@@ -193,6 +195,75 @@ fun UniversalSearch(runner: TileRunner, onNavigate: (String) -> Unit) {
         }.getOrDefault(emptyList())
     }
 
+    // ---- Ask Nexus (Claude) ----
+    val ai by c.aiPrefs.state.collectAsStateWithLifecycle()
+    var aiBusy by remember { mutableStateOf(false) }
+    var aiText by remember { mutableStateOf<String?>(null) }
+    var aiConfirm by remember { mutableStateOf<String?>(null) } // pending PC restart/shutdown
+    val aiScope = androidx.compose.runtime.rememberCoroutineScope()
+    LaunchedEffect(q) { aiText = null; aiConfirm = null }
+    fun runAi(action: com.eoinknd16.nexus.ai.AiAction): String = when (action) {
+        is com.eoinknd16.nexus.ai.AiAction.OpenApp -> {
+            val app = apps.map { it to fuzzyScore(it.label, action.name) }.filter { it.second > 0 }.maxByOrNull { it.second }?.first
+            if (app != null) { c.apps.launch(app); "Opened ${app.label}" } else "Couldn't find ${action.name}"
+        }
+        is com.eoinknd16.nexus.ai.AiAction.Pc -> when (action.action) {
+            "wake" -> { runner.runAction(TileAction(TileAction.Kind.WakePc)); "Waking the PC" }
+            "sleep" -> { runner.runAction(TileAction(TileAction.Kind.PcPower, "sleep")); "PC going to sleep" }
+            "restart", "shutdown" -> { aiConfirm = action.action; "Confirm below" }
+            "open_remote" -> { onNavigate(Routes.PC); "Opened the remote" }
+            "open_tv" -> { runner.runAction(TileAction(TileAction.Kind.PcScreen, "tv")); "Opened TV on the PC" }
+            "quick_menu" -> { runner.runAction(TileAction(TileAction.Kind.PcNav, "quickMenu")); "Opened the quick menu" }
+            else -> ""
+        }
+        is com.eoinknd16.nexus.ai.AiAction.Page -> {
+            val pg = LookState.look.home.pages.firstOrNull { it.name.equals(action.page, true) }
+            HomePager.go(pg?.id ?: action.page.lowercase()); "Switched page"
+        }
+        is com.eoinknd16.nexus.ai.AiAction.Phone -> {
+            when (action.action) {
+                "notifications" -> runner.runAction(TileAction(TileAction.Kind.Notifications))
+                "quick_settings" -> runner.runAction(TileAction(TileAction.Kind.QuickSettings))
+                "lock_screen" -> runner.runAction(TileAction(TileAction.Kind.LockScreen))
+                "settings" -> runner.runAction(TileAction(TileAction.Kind.Settings, "all"))
+                else -> runner.runAction(TileAction(TileAction.Kind.Settings, action.action))
+            }
+            "Opened ${action.action.replace('_', ' ')}"
+        }
+        is com.eoinknd16.nexus.ai.AiAction.Web -> { runner.webSearch(action.query); "Searching the web" }
+        is com.eoinknd16.nexus.ai.AiAction.Nexus -> {
+            when (action.screen) {
+                "tv" -> onNavigate(Routes.TV)
+                "customise" -> onNavigate(Routes.CUSTOMIZE)
+                "settings" -> onNavigate(Routes.SETTINGS)
+                "app_drawer" -> HomeDrawerHub.open()
+                "pc_controls" -> PcHub.open = true
+            }
+            "Opened ${action.screen.replace('_', ' ')}"
+        }
+    }
+    fun askAi() {
+        if (aiBusy || q.isEmpty()) return
+        aiBusy = true
+        aiText = null
+        aiScope.launch {
+            val result = runCatching {
+                val pcs = com.eoinknd16.nexus.link.allPcs(c.pcStore.value, c.pcSaved.value).map { it.displayName }
+                com.eoinknd16.nexus.ai.NexusAssistant.ask(ai, q, apps.map { it.label }, LookState.look.home.pages.map { it.name }, pcs)
+            }
+            aiBusy = false
+            result.fold(
+                onSuccess = { r ->
+                    val done = r.actions.map { runAi(it) }.filter { it.isNotBlank() && it != "Confirm below" }
+                    aiText = (listOf(r.text) + done).filter { it.isNotBlank() }.joinToString("\n").ifBlank { "Done." }
+                    // Leave the panel open only if there's something to read or confirm.
+                    if (r.actions.isNotEmpty() && r.text.isBlank() && aiConfirm == null) close()
+                },
+                onFailure = { aiText = it.message ?: "Couldn't reach Claude" },
+            )
+        }
+    }
+
     fun runTop() {
         when {
             cmdHits.isNotEmpty() && (appHits.isEmpty() || fuzzyScore(cmdHits.first().label, q) >= fuzzyScore(appHits.first().label, q)) -> { cmdHits.first().run(); close() }
@@ -220,7 +291,7 @@ fun UniversalSearch(runner: TileRunner, onNavigate: (String) -> Unit) {
                     Icon(Icons.Filled.Search, null, tint = Nx.Cyan)
                     Spacer(Modifier.width(12.dp))
                     Box(Modifier.weight(1f)) {
-                        if (query.isEmpty()) Text("Apps, contacts, commands, maths, shows, web…", color = Nx.Muted, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
+                        if (query.isEmpty()) Text(if (ai.ready) "Search or ask Nexus anything…" else "Apps, contacts, commands, maths, shows, web…", color = Nx.Muted, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
                         BasicTextField(
                             value = query,
                             onValueChange = { query = it },
@@ -246,6 +317,19 @@ fun UniversalSearch(runner: TileRunner, onNavigate: (String) -> Unit) {
                         val dock = LookState.look.home.dock.items.mapNotNull { t -> apps.firstOrNull { it.key == t.action.arg } }
                         if (dock.isNotEmpty()) {
                             Group("Your apps") { AppRow(dock) { c.apps.launch(it); close() } }
+                        }
+                    }
+                    if (ai.ready && q.length >= 3) {
+                        Group("Ask Nexus") {
+                            ResultRow(Icons.Filled.AutoAwesome, if (aiBusy) "Thinking…" else "Ask: “$q”", if (aiText == null) "Claude · can open apps, control the PC, switch pages…" else null, accent = Nx.Magenta) { askAi() }
+                            aiText?.let { t -> Text(t, style = MaterialTheme.typography.bodyLarge, color = Nx.Text, modifier = Modifier.padding(vertical = 4.dp)) }
+                            aiConfirm?.let { act ->
+                                ResultRow(Icons.Filled.PowerSettingsNew, "Confirm: ${if (act == "shutdown") "shut down" else "restart"} the PC", "Has a 20 s cancel on the PC", accent = Nx.Danger) {
+                                    runner.runAction(TileAction(TileAction.Kind.PcPower, act))
+                                    aiConfirm = null
+                                    close()
+                                }
+                            }
                         }
                     }
                     answer?.let { a ->

@@ -107,6 +107,9 @@ class AppContainer(app: Application) {
         emptyMap<String, Long>(), scope,
     )
 
+    /** Your Claude API key for "Ask Nexus" (stays on the phone). */
+    val aiPrefs = JsonStore(ds, "ai_prefs", com.eoinknd16.nexus.ai.AiPrefs.serializer(), com.eoinknd16.nexus.ai.AiPrefs(), scope)
+
     val weather = WeatherRepository(app)
     val widgets = WidgetHost(app)
     val updater = com.eoinknd16.nexus.update.Updater(app)

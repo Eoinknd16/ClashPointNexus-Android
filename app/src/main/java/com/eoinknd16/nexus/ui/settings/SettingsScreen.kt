@@ -98,6 +98,7 @@ fun SettingsScreen() {
                 }
                 PcSection()
                 StremioSection()
+                AiSection()
 
                 Column {
                     HudLabel("Media")
@@ -505,5 +506,49 @@ private fun PasswordField(label: String, value: String, onChange: (String) -> Un
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
             modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
         )
+    }
+}
+
+
+/** "Ask Nexus": your own Claude API key (kept on this phone only). */
+@Composable
+private fun AiSection() {
+    val c = appContainer()
+    val scope = rememberCoroutineScope()
+    val ai by c.aiPrefs.state.collectAsStateWithLifecycle()
+    var key by remember { mutableStateOf("") }
+    var status by remember { mutableStateOf<String?>(null) }
+    Column {
+        HudLabel("Ask Nexus (AI)")
+        Spacer(Modifier.height(10.dp))
+        HoloPanel(Modifier.fillMaxWidth()) {
+            Text(
+                if (ai.ready) "Connected · ${ai.model}" else "Not set up",
+                style = MaterialTheme.typography.titleMedium, color = if (ai.ready) Nx.Lime else Nx.Text,
+            )
+            Text(
+                "Type a request in search (\"open spotify and wake the pc\") and tap Ask. Uses your own Claude API key from console.anthropic.com; it's stored only on this phone and sent only to Anthropic.",
+                style = MaterialTheme.typography.labelSmall, color = Nx.Muted,
+            )
+            Spacer(Modifier.height(10.dp))
+            com.eoinknd16.nexus.ui.settings.TextRow(if (ai.ready) "Replace API key" else "API key", key, "sk-ant-…") { key = it.trim() }
+            com.eoinknd16.nexus.ui.settings.ChoiceRow(
+                "Model", listOf("claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5"), ai.model,
+                { when (it) { "claude-haiku-5-5" -> "Haiku (fast)"; "claude-sonnet-5-5" -> "Sonnet"; else -> "Opus (smartest)" } },
+            ) { m -> scope.launch { c.aiPrefs.update { it.copy(model = m) } } }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (key.isNotBlank()) NexusButton("Save key", filled = true) {
+                    scope.launch {
+                        c.aiPrefs.update { it.copy(apiKey = key) }
+                        key = ""
+                        status = "Saved. Try it from search."
+                    }
+                }
+                if (ai.ready) NexusButton("Remove key", accent = Nx.Danger) {
+                    scope.launch { c.aiPrefs.update { it.copy(apiKey = "") }; status = "Key removed" }
+                }
+            }
+            status?.let { Text(hud(it), style = MaterialTheme.typography.labelSmall, color = Nx.Amber) }
+        }
     }
 }
