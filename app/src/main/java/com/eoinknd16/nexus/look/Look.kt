@@ -341,6 +341,25 @@ sealed class HomeBlock {
         val heightDp: Float = 24f,
     ) : HomeBlock()
 
+    /** "At a glance": the few things worth knowing right now, changing through the day. */
+    @Serializable
+    @SerialName("glance")
+    data class Glance(
+        override val id: String = newId(),
+        override val visible: Boolean = true,
+        override val pin: BlockPin = BlockPin.None,
+        override val locked: Boolean = false,
+        val greeting: Boolean = true,
+        val calendar: Boolean = true,
+        val alarm: Boolean = true,
+        val rain: Boolean = true,
+        val battery: Boolean = true,
+        val nowPlaying: Boolean = true,
+        val pcLateNight: Boolean = true,
+        val maxLines: Int = 3,
+        val framed: Boolean = false,
+    ) : HomeBlock()
+
     val kindLabel: String
         get() = when (this) {
             is Clock -> "Clock"
@@ -353,6 +372,7 @@ sealed class HomeBlock {
             is Widget -> "Widget: $label"
             is Text -> "Text"
             is Spacer -> "Spacer"
+            is Glance -> "At a glance"
         }
 
     fun withVisible(v: Boolean): HomeBlock = copyMeta(visible = v)
@@ -370,6 +390,7 @@ sealed class HomeBlock {
         is Widget -> copy(visible = visible, pin = pin, locked = locked)
         is Text -> copy(visible = visible, pin = pin, locked = locked)
         is Spacer -> copy(visible = visible, pin = pin, locked = locked)
+        is Glance -> copy(visible = visible, pin = pin, locked = locked)
     }
 }
 

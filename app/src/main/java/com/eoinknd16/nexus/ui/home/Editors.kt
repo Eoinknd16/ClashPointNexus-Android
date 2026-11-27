@@ -337,6 +337,17 @@ private fun BlockEditor(block: HomeBlock, onDismiss: () -> Unit, onEdit: (HomeEd
                 ToggleRow("Accent colour", block.accent) { set(block.copy(accent = it)) }
             }
             is HomeBlock.Spacer -> SliderRow("Height", block.heightDp, 4f..240f, { "${it.roundToInt()}dp" }) { set(block.copy(heightDp = it)) }
+            is HomeBlock.Glance -> {
+                ToggleRow("Greeting", block.greeting) { set(block.copy(greeting = it)) }
+                ToggleRow("Next calendar event", block.calendar) { set(block.copy(calendar = it)) }
+                ToggleRow("Rain in the next few hours", block.rain) { set(block.copy(rain = it)) }
+                ToggleRow("What's playing", block.nowPlaying) { set(block.copy(nowPlaying = it)) }
+                ToggleRow("Battery (when low or charging)", block.battery) { set(block.copy(battery = it)) }
+                ToggleRow("Tomorrow's alarm (evenings)", block.alarm) { set(block.copy(alarm = it)) }
+                ToggleRow("PC still on (late at night)", block.pcLateNight) { set(block.copy(pcLateNight = it)) }
+                SliderRow("Most lines shown", block.maxLines.toFloat(), 1f..6f, { "${it.roundToInt()}" }) { set(block.copy(maxLines = it.roundToInt())) }
+                ToggleRow("Inside a panel", block.framed) { set(block.copy(framed = it)) }
+            }
         }
     }
 }

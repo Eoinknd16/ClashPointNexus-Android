@@ -35,6 +35,9 @@ data class WeatherNow(
     val unit: TempUnit,
     val days: List<DayForecast>,
     val fetchedAt: Long,
+    /** Next hour in the coming 6 with a good chance of rain ("15:00"), and that chance. */
+    val rainAt: String? = null,
+    val rainChance: Int = 0,
 ) {
     val summary: String get() = describe(code)
 
@@ -86,7 +89,8 @@ class WeatherRepository(private val context: Context) {
             val unitParam = if (prefs.unit == TempUnit.F) "&temperature_unit=fahrenheit" else ""
             val url = "https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon" +
                 "&current=temperature_2m,apparent_temperature,weather_code,is_day,relative_humidity_2m,wind_speed_10m" +
-                "&daily=weather_code,temperature_2m_max,temperature_2m_min&forecast_days=7&timezone=auto$unitParam"
+                "&daily=weather_code,temperature_2m_max,temperature_2m_min&forecast_days=7&timezone=auto$unitParam" +
+                "&hourly=precipitation_probability&forecast_hours=7"
             val root = Http.json.parseToJsonElement(Http.getText(url, timeoutMs = 10_000)).jsonObject
             val cur = root["current"] as? JsonObject ?: error("No current weather")
             val daily = root["daily"] as? JsonObject
@@ -101,6 +105,11 @@ class WeatherRepository(private val context: Context) {
                 )
             }
             fun num(k: String) = (cur[k] as? JsonPrimitive)?.doubleOrNull
+            // First upcoming hour (skipping the current one) with >= 50% chance of rain.
+            val hourly = root["hourly"] as? JsonObject
+            val hTimes = (hourly?.get("time") as? JsonArray).orEmpty()
+            val hProb = (hourly?.get("precipitation_probability") as? JsonArray).orEmpty()
+            val rainIdx = (1 until minOf(hTimes.size, hProb.size)).firstOrNull { i -> ((hProb[i] as? JsonPrimitive)?.intOrNull ?: 0) >= 50 }
             WeatherNow(
                 place = place,
                 temp = (num("temperature_2m") ?: 0.0).roundToInt(),
@@ -112,6 +121,8 @@ class WeatherRepository(private val context: Context) {
                 unit = prefs.unit,
                 days = days,
                 fetchedAt = System.currentTimeMillis(),
+                rainAt = rainIdx?.let { (hTimes[it] as? JsonPrimitive)?.contentOrNull?.substringAfter('T') },
+                rainChance = rainIdx?.let { (hProb[it] as? JsonPrimitive)?.intOrNull } ?: 0,
             ).also {
                 _now.value = it
                 lastKey = key

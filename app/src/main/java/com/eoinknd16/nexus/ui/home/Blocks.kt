@@ -199,6 +199,7 @@ fun BlockContent(
             modifier = Modifier.fillMaxWidth(),
         )
         is HomeBlock.Spacer -> Spacer(Modifier.height(block.heightDp.dp))
+        is HomeBlock.Glance -> GlanceView(block, vm)
     }
 }
 
