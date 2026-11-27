@@ -1,5 +1,7 @@
 package com.eoinknd16.nexus.ui.home
 
+import com.eoinknd16.nexus.look.updateDock
+
 import com.eoinknd16.nexus.look.updateBlock
 
 import androidx.compose.animation.core.VectorConverter
@@ -1026,16 +1028,80 @@ fun Dock(
     val outer = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)
     val inner = if (config.framed) outer.holoPanel(glow = 0.1f).padding(horizontal = 12.dp, vertical = 10.dp) else outer
     val sideButtons = (if (editMode) 1 else 0) + (if (config.showDrawerButton) 1 else 0)
+    // Edit mode: hold a tray icon and slide it left/right; the others make room.
+    val haptics = com.eoinknd16.nexus.ui.fx.rememberHaptics()
+    var dragId by remember { mutableStateOf<String?>(null) }
+    var order by remember(config.items) { mutableStateOf(config.items.map { it.id }) }
+    var fingerX by remember { mutableStateOf(0f) }
+    var grabX by remember { mutableStateOf(0f) }
+    val rects = remember { mutableMapOf<String, androidx.compose.ui.geometry.Rect>() }
+    val byId = config.items.associateBy { it.id }
+    val shownItems = if (dragId != null) order.mapNotNull { byId[it] } else config.items
     val slots: @Composable (Modifier) -> Unit = { m ->
-        config.items.forEach { tile ->
-            DockSlot(
-                tile = tile, runner = runner, size = size, showLabel = config.showLabels,
-                modifier = m,
-                onOpenFolder = onOpenFolder,
-                onEdit = { onEditSlot(tile) },
-                onMove = { d -> c.editLook { it.moveTile(null, tile.id, d) } },
-                onRemove = { c.editLook("Removed from tray") { it.removeTile(null, tile.id) } },
-            )
+        shownItems.forEach { tile ->
+            key(tile.id) {
+                val dragging = dragId == tile.id
+                val lift by androidx.compose.animation.core.animateFloatAsState(if (dragging) 1f else 0f, label = "trayLift")
+                DockSlot(
+                    tile = tile, runner = runner, size = size, showLabel = config.showLabels,
+                    modifier = m
+                        .onGloballyPositioned { rects[tile.id] = it.boundsInRoot() }
+                        .then(if (dragging) Modifier else Modifier.animatePlacement())
+                        .zIndex(if (dragging) 2f else 0f)
+                        .graphicsLayer {
+                            if (dragging) rects[tile.id]?.let { translationX = fingerX - grabX - it.left }
+                            scaleX = 1f + 0.15f * lift
+                            scaleY = 1f + 0.15f * lift
+                        }
+                        .then(
+                            if (editMode) Modifier.pointerInput(tile.id) {
+                                var moved = 0f
+                                detectDragGesturesAfterLongPress(
+                                    onDragStart = { at ->
+                                        val r = rects[tile.id] ?: return@detectDragGesturesAfterLongPress
+                                        order = config.items.map { it.id }
+                                        grabX = at.x
+                                        fingerX = r.left + at.x
+                                        moved = 0f
+                                        dragId = tile.id
+                                        haptics.pickUp()
+                                    },
+                                    onDrag = { ch, d ->
+                                        ch.consume()
+                                        moved += kotlin.math.abs(d.x)
+                                        fingerX += d.x
+                                        val over = rects.entries.firstOrNull { (k, r) -> k != tile.id && fingerX in r.left..r.right }
+                                        if (over != null) {
+                                            val from = order.indexOf(tile.id)
+                                            val to = order.indexOf(over.key)
+                                            if (from >= 0 && to >= 0 && from != to) {
+                                                order = order.toMutableList().apply { removeAt(from); add(to, tile.id) }
+                                                haptics.tick()
+                                            }
+                                        }
+                                    },
+                                    onDragEnd = {
+                                        if (moved < 12f) { dragId = null; onEditSlot(tile) }
+                                        else {
+                                            if (order != config.items.map { it.id }) {
+                                                val newOrder = order
+                                                c.editLook { l -> l.updateDock { d -> d.copy(items = newOrder.mapNotNull { id -> d.items.firstOrNull { it.id == id } }) } }
+                                                haptics.thud()
+                                            }
+                                            dragId = null
+                                        }
+                                    },
+                                    onDragCancel = { dragId = null },
+                                )
+                            } else Modifier,
+                        ),
+                    onOpenFolder = onOpenFolder,
+                    onEdit = { onEditSlot(tile) },
+                    onMove = { d -> c.editLook { it.moveTile(null, tile.id, d) } },
+                    onRemove = { c.editLook("Removed from tray") { it.removeTile(null, tile.id) } },
+                    longPressMenu = !editMode,
+                )
+            }
         }
         if (editMode || config.items.isEmpty()) {
             Box(m, contentAlignment = Alignment.Center) {
@@ -1105,6 +1171,7 @@ private fun DockSlot(
     onEdit: () -> Unit,
     onMove: (Int) -> Unit,
     onRemove: () -> Unit,
+    longPressMenu: Boolean = true,
 ) {
     var menu by remember { mutableStateOf(false) }
     var center by remember { mutableStateOf(Offset.Zero) }
@@ -1117,7 +1184,7 @@ private fun DockSlot(
                     bounds = it.boundsInRoot()
                     center = it.boundsInRoot().center
                 }
-                .nexusPress({ if (tile.isFolder()) onOpenFolder(tile, center) else runner.run(tile, bounds) }, onLongClick = { menu = true }),
+                .nexusPress({ if (tile.isFolder()) onOpenFolder(tile, center) else runner.run(tile, bounds) }, onLongClick = if (longPressMenu) ({ menu = true }) else null),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Box {
