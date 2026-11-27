@@ -134,7 +134,10 @@ fun UniversalSearch(runner: TileRunner, onNavigate: (String) -> Unit) {
     val context = LocalContext.current
     val haptics = rememberHaptics()
     val keyboard = LocalSoftwareKeyboardController.current
-    val apps by c.apps.apps.collectAsStateWithLifecycle()
+    val allApps by c.apps.apps.collectAsStateWithLifecycle()
+    val launcherPrefs by c.apps.prefs.state.collectAsStateWithLifecycle()
+    // Hidden apps stay hidden from search too.
+    val apps = remember(allApps, launcherPrefs.hidden) { allApps.filter { it.key !in launcherPrefs.hidden } }
     var query by remember { mutableStateOf("") }
     val focus = remember { FocusRequester() }
     val open = UniversalSearchHub.open
