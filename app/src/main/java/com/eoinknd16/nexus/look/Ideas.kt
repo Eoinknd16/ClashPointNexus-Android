@@ -31,10 +31,66 @@ private inline fun <reified B : HomeBlock> Look.ensureBlock(block: B, crossinlin
     return copy(home = home.copy(blocks = list))
 }
 
+// ---- Finding your own tiles to build the layouts from ----------------------
+
+private fun Look.allTiles(): List<TileConfig> =
+    (home.blocks + home.pages.flatMap { it.blocks }).filterIsInstance<HomeBlock.Tiles>().flatMap { it.tiles }
+
+private fun TileConfig.isTv() = action.kind == TileAction.Kind.Screen && action.arg == "tv" || label.trim().equals("tv", true)
+private fun TileConfig.isSpotify() = (action.kind == TileAction.Kind.Screen && action.arg == "spotify") ||
+    action.arg.contains("spotify", true) || label.contains("spotify", true)
+private fun TileConfig.isPc() = action.kind == TileAction.Kind.PcHub || (action.kind == TileAction.Kind.Screen && action.arg == "pc") ||
+    label.contains("remote", true) || label.contains("pc", true)
+private val socialHints = listOf("whatsapp", "instagram", "snapchat", "discord", "reddit", "threads", "tiktok", "facebook", "twitter", "messenger", "telegram", "bereal")
+private fun TileConfig.socialScore() = folderApps.count { k -> socialHints.any { k.contains(it, true) } }
+
+/**
+ * Rebuilds the main page as [main] (made from your own tiles), and moves every
+ * tile and block that isn't part of the new layout onto a page called
+ * "Everything else" so nothing is lost. Your tray isn't touched.
+ */
+private fun Look.rebuild(pageName: String, main: (picks: Picks, keep: (TileConfig) -> TileConfig) -> List<HomeBlock>): Look {
+    val tiles = allTiles()
+    val folders = tiles.filter { it.folderApps.isNotEmpty() }
+    val tools = folders.maxByOrNull { it.folderApps.size - it.socialScore() * 3 }
+    val social = folders.filter { it.id != tools?.id }.maxByOrNull { it.socialScore() * 100 + it.folderApps.size }
+    val picks = Picks(
+        tv = tiles.firstOrNull { it.isTv() } ?: TileConfig(label = "TV", sublabel = "Movies & shows", icon = "tv", color = "accent2", action = TileAction(TileAction.Kind.Screen, "tv")),
+        spotify = tiles.firstOrNull { it.isSpotify() } ?: TileConfig(label = "Spotify", icon = "music", color = "good", action = TileAction(TileAction.Kind.Screen, "spotify")),
+        pc = tiles.firstOrNull { it.isPc() } ?: TileConfig(label = "PC", sublabel = "Remote", icon = "computer", action = TileAction(TileAction.Kind.PcHub)),
+        tools = tools,
+        social = social,
+    )
+    val used = mutableSetOf<String>()
+    val keep: (TileConfig) -> TileConfig = { t -> used += t.id; t }
+    val clock = home.blocks.filterIsInstance<HomeBlock.Clock>().firstOrNull()
+    val search = home.blocks.filterIsInstance<HomeBlock.SearchBar>().firstOrNull()
+    val newMain = main(picks, keep)
+    // Whatever's left over goes to "Everything else", in the style of your first tile block.
+    val firstTiles = (home.blocks + home.pages.flatMap { it.blocks }).filterIsInstance<HomeBlock.Tiles>().firstOrNull()
+    val leftoverTiles = home.blocks.filterIsInstance<HomeBlock.Tiles>().flatMap { it.tiles }.filter { it.id !in used }
+    val leftoverBlocks = home.blocks.filter { b ->
+        b !is HomeBlock.Tiles && b.id != clock?.id && b.id != search?.id && newMain.none { it.id == b.id }
+    }
+    val extra = buildList<HomeBlock> {
+        if (leftoverTiles.isNotEmpty()) add((firstTiles ?: HomeBlock.Tiles()).copy(id = newId(), title = "", tiles = leftoverTiles))
+        addAll(leftoverBlocks)
+    }
+    // Pages' tiles that we pulled onto the main page are removed from their old spot.
+    val pages = home.pages.map { pg ->
+        pg.copy(blocks = pg.blocks.map { b -> if (b is HomeBlock.Tiles) b.copy(tiles = b.tiles.filter { it.id !in used }) else b }
+            .filter { b -> !(b is HomeBlock.Tiles && b.tiles.isEmpty()) })
+    }
+    val morePage = if (extra.isEmpty()) emptyList() else listOf(HomePage(name = "Everything else ($pageName)", blocks = extra))
+    return copy(home = home.copy(blocks = newMain, pages = pages + morePage))
+}
+
+private data class Picks(val tv: TileConfig, val spotify: TileConfig, val pc: TileConfig, val tools: TileConfig?, val social: TileConfig?)
+
 val lookIdeas: List<LookIdea> = listOf(
     LookIdea(
         "Glass daily",
-        "Frosted glass tiles that tip as you tilt, a calm starfield, your folders filling their tiles and a liquid battery under them.",
+        "The Glass daily layout: big clock with date and weather, search, TV and Spotify as glass tiles, a wide folder with its apps filling it, and a liquid battery. Your tray stays; other tiles move to a page called Everything else.",
     ) { l ->
         l.copy(
             presetName = "Glass daily",
@@ -45,15 +101,28 @@ val lookIdeas: List<LookIdea> = listOf(
             backdrop = l.backdrop.copy(style = BackdropStyle.Stars, scanlines = false, vignette = true, intensity = 0.8f),
             fonts = l.fonts.copy(clock = FontChoice.Thin, uppercaseLabels = false),
             home = l.home.copy(tileSkin = tileSkinPresets.first { it.first == "Glass" }.second),
-        )
-            .mapTiles { it.copy(skin = null, border = null) }
-            .styleFolders(FolderTileStyle.Fill)
-            .ensureBlock(HomeBlock.SearchBar()) { it is HomeBlock.Clock || it is HomeBlock.Glance }
-            .ensureBlock(HomeBlock.Liquid(heightDp = 56f)) { it is HomeBlock.Tiles }
+        ).rebuild("Glass daily") { p, keep ->
+            val clock = l.home.blocks.filterIsInstance<HomeBlock.Clock>().firstOrNull() ?: HomeBlock.Clock()
+            val search = l.home.blocks.filterIsInstance<HomeBlock.SearchBar>().firstOrNull() ?: HomeBlock.SearchBar()
+            listOfNotNull(
+                clock.copy(sizeSp = 64f, align = Align.Start, showDate = true, showWeather = true, showPcStatus = false, dateFormat = "EEE d MMM"),
+                search,
+                HomeBlock.Tiles(
+                    title = "", columns = 2, aspect = 1.85f, gapDp = 10f, iconSizeDp = 26f, labelScale = 0.95f, paddingDp = 14f,
+                    showSublabels = false, tileLayout = TileLayout.Stack,
+                    tiles = listOfNotNull(
+                        keep(p.tv).copy(skin = null, border = null),
+                        keep(p.spotify).copy(skin = null, border = null),
+                        p.tools?.let { keep(it).copy(skin = null, border = null, colSpan = 2, rowSpan = 1, folderTileStyle = FolderTileStyle.Fill) },
+                    ),
+                ),
+                HomeBlock.Liquid(heightDp = 48f, framed = true),
+            )
+        }
     },
     LookIdea(
         "Mono pro",
-        "Near-black with one lime accent, monospace capitals, thin outlines, black-and-white icons, a physics folder and an Ask Nexus bar.",
+        "The Mono pro layout: clock with a lime date line, Ask Nexus bar, TV / PC / Spotify as thin list rows, then a physics folder and a fill folder side by side. Your tray stays; other tiles move to a page called Everything else.",
     ) { l ->
         val outline = BorderOverride(style = BorderStyle.Solid, width = 0.5f, color = "#2C2C2A")
         l.copy(
@@ -71,9 +140,28 @@ val lookIdeas: List<LookIdea> = listOf(
                     labelWeight = 500, labelColor = "text", subColor = "accent", press = SkinPress.Sink,
                 ),
             ),
-        )
-            .mapTiles { it.copy(skin = null, border = outline) }
-            .styleFolders(FolderTileStyle.Physics, FolderTileStyle.Fill)
-            .ensureBlock(HomeBlock.AskBar()) { it is HomeBlock.Clock || it is HomeBlock.Glance }
+        ).rebuild("Mono pro") { p, keep ->
+            val clock = l.home.blocks.filterIsInstance<HomeBlock.Clock>().firstOrNull() ?: HomeBlock.Clock()
+            val ask = l.home.blocks.filterIsInstance<HomeBlock.AskBar>().firstOrNull() ?: HomeBlock.AskBar(placeholder = "Ask Nexus…")
+            fun row(t: TileConfig) = keep(t).copy(skin = null, border = outline, colSpan = 1, rowSpan = 1)
+            listOfNotNull(
+                clock.copy(sizeSp = 66f, align = Align.Start, showDate = true, showWeather = true, showPcStatus = false, dateFormat = "EEE d MMM"),
+                ask,
+                HomeBlock.Tiles(
+                    title = "", columns = 1, rowHeightDp = 46f, gapDp = 6f, iconSizeDp = 20f, labelScale = 0.9f, paddingDp = 10f,
+                    showSublabels = true, tileLayout = TileLayout.Inline,
+                    tiles = listOf(row(p.tv), row(p.pc), row(p.spotify)),
+                ),
+                listOfNotNull(p.social, p.tools).takeIf { it.isNotEmpty() }?.let { folders ->
+                    HomeBlock.Tiles(
+                        title = "", columns = 2, aspect = 1.3f, gapDp = 8f, iconSizeDp = 22f, labelScale = 0.85f, paddingDp = 10f,
+                        showSublabels = false,
+                        tiles = folders.mapIndexed { i, f ->
+                            keep(f).copy(skin = null, border = outline, colSpan = 1, rowSpan = 1, folderTileStyle = if (i == 0) FolderTileStyle.Physics else FolderTileStyle.Fill)
+                        },
+                    )
+                },
+            )
+        }
     },
 )
