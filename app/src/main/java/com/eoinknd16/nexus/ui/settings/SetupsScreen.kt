@@ -125,6 +125,28 @@ fun SetupsScreen() {
                     }
                 }
                 message?.let { m -> item { Text(m, color = Nx.Lime, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(4.dp)) } }
+                item { Spacer(Modifier.height(4.dp)); HudLabel("Ideas to try") }
+                item {
+                    Text(
+                        "These restyle your own setup: your tray, tiles, folders and apps stay put. What you have now is saved first, and Undo works too.",
+                        color = Nx.Muted, style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                items(com.eoinknd16.nexus.look.lookIdeas, key = { "idea-" + it.name }) { idea ->
+                    Row(
+                        Modifier.fillMaxWidth().clip(nexusShape(0.6f)).background(Nx.Panel).padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(idea.name, color = Nx.Text, style = MaterialTheme.typography.titleSmall)
+                            Text(idea.description, color = Nx.Muted, style = MaterialTheme.typography.labelSmall)
+                        }
+                        Spacer(Modifier.width(10.dp))
+                        NexusButton("Try it", accent = Nx.Lime) {
+                            scope.launch { c.tryIdea(idea); message = "“${idea.name}” applied. Your previous setup is in the backups below." }
+                        }
+                    }
+                }
                 item { Spacer(Modifier.height(4.dp)); HudLabel("Saved") }
                 if (saved.isEmpty()) item {
                     Text("Nothing saved yet. Save what you have, then experiment as much as you like.", color = Nx.Muted, style = MaterialTheme.typography.bodyMedium)

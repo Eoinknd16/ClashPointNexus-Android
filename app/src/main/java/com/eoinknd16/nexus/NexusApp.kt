@@ -139,6 +139,12 @@ class AppContainer(app: Application) {
         return true
     }
 
+    /** Restyle the current setup with an idea (what you had is saved first). */
+    suspend fun tryIdea(idea: com.eoinknd16.nexus.look.LookIdea) {
+        saveSetup("Before trying ${idea.name}", kind = "before")
+        editLook("“${idea.name}” applied") { idea.apply(it) }
+    }
+
     val weather = WeatherRepository(app)
     val widgets = WidgetHost(app)
     val updater = com.eoinknd16.nexus.update.Updater(app)
