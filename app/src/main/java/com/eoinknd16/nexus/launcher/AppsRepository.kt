@@ -26,6 +26,8 @@ data class LaunchableApp(
     val component: ComponentName,
     val user: UserHandle,
     val icon: ImageBitmap,
+    /** Android's app category (ApplicationInfo.CATEGORY_*), -1 if the app doesn't say. */
+    val category: Int = -1,
 ) {
     val key: String get() = component.flattenToShortString()
 }
@@ -130,6 +132,7 @@ class AppsRepository(
                     packageName = info.componentName.packageName,
                     component = info.componentName,
                     user = info.user,
+                    category = runCatching { info.applicationInfo.category }.getOrDefault(-1),
                     icon = runCatching { (themed ?: info.getBadgedIcon(0)).toBitmap(iconSizePx, iconSizePx) }
                         .getOrElse { info.getBadgedIcon(0).toBitmap(iconSizePx, iconSizePx) }.asImageBitmap(),
                 )

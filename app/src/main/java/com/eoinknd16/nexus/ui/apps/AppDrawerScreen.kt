@@ -1,5 +1,9 @@
 package com.eoinknd16.nexus.ui.apps
 
+import androidx.compose.foundation.rememberScrollState
+
+import androidx.compose.foundation.horizontalScroll
+
 import com.eoinknd16.nexus.look.addBlock
 
 import com.eoinknd16.nexus.look.upsertTile
@@ -115,6 +119,7 @@ fun AppDrawerContent(
     val prefs by repo.prefs.state.collectAsStateWithLifecycle()
     var query by rememberSaveable { mutableStateOf("") }
     var showHidden by rememberSaveable { mutableStateOf(false) }
+    var category by rememberSaveable { mutableStateOf<Int?>(null) }
     val scope = rememberCoroutineScope()
     val haptics = com.eoinknd16.nexus.ui.fx.rememberHaptics()
 
@@ -127,6 +132,7 @@ fun AppDrawerContent(
     val visible = apps
         .filter { showHidden || it.key !in prefs.hidden }
         .filter { query.isBlank() || fuzzyMatch(it.label, query) }
+        .filter { category == null || it.category == category }
         .let { list -> if (query.isBlank()) list else list.sortedByDescending { fuzzyScore(it.label, query) } }
 
     Column(modifier) {
@@ -141,7 +147,21 @@ fun AppDrawerContent(
             }
         }
         if (drawer.showSearch) SearchField(query, { query = it }, focus, onGo = { visible.firstOrNull()?.let { repo.launch(it); onLaunched() } })
-        if (drawer.showSuggestions && query.isBlank()) {
+        // Category chips, only for categories you actually have apps in.
+        val cats = remember(apps) {
+            apps.map { it.category }.filter { it >= 0 }.groupingBy { it }.eachCount().filter { it.value >= 2 }.keys
+                .sortedBy { CATEGORY_NAMES[it] ?: "" }.filter { it in CATEGORY_NAMES }
+        }
+        if (cats.isNotEmpty() && query.isBlank()) {
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 14.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                com.eoinknd16.nexus.ui.settings.Chip("All", category == null) { category = null; haptics.tick() }
+                cats.forEach { k -> com.eoinknd16.nexus.ui.settings.Chip(CATEGORY_NAMES[k] ?: "?", category == k) { category = if (category == k) null else k; haptics.tick() } }
+            }
+        }
+        if (drawer.showSuggestions && query.isBlank() && category == null) {
             val suggested = remember(apps, prefs.usage) { repo.suggestions(5) }
             if (suggested.isNotEmpty()) {
                 Text("SUGGESTED", style = MaterialTheme.typography.labelSmall, color = Nx.Muted, modifier = Modifier.padding(start = 18.dp, top = 4.dp))
@@ -213,6 +233,17 @@ fun AppDrawerContent(
         }
     }
 }
+
+private val CATEGORY_NAMES = mapOf(
+    android.content.pm.ApplicationInfo.CATEGORY_GAME to "Games",
+    android.content.pm.ApplicationInfo.CATEGORY_AUDIO to "Music & audio",
+    android.content.pm.ApplicationInfo.CATEGORY_VIDEO to "Video",
+    android.content.pm.ApplicationInfo.CATEGORY_IMAGE to "Photos",
+    android.content.pm.ApplicationInfo.CATEGORY_SOCIAL to "Social",
+    android.content.pm.ApplicationInfo.CATEGORY_NEWS to "News",
+    android.content.pm.ApplicationInfo.CATEGORY_MAPS to "Maps",
+    android.content.pm.ApplicationInfo.CATEGORY_PRODUCTIVITY to "Productivity",
+)
 
 private fun firstLetter(label: String): Char = label.trim().firstOrNull()?.uppercaseChar()?.takeIf { it.isLetter() } ?: '#'
 
