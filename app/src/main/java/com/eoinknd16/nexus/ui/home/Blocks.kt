@@ -949,7 +949,7 @@ private fun PostersView(b: HomeBlock.Posters, vm: HomeViewModel, headings: Boole
             HudLabel(b.title)
             Spacer(Modifier.height(10.dp))
         }
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        LazyRow(Modifier.sideScrollZone(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             items(items, key = { "${it.first.type}:${it.first.id}" }) { (item, progress) ->
                 PosterCard(item, width = b.posterWidthDp.coerceIn(56f, 200f).dp, progress = progress) { nav.navigate(Routes.detail(item.type.name, item.id)) }
             }
@@ -976,7 +976,7 @@ private fun AppRowView(b: HomeBlock.AppRow, runner: TileRunner, headings: Boolea
             HudLabel(b.title)
             Spacer(Modifier.height(10.dp))
         }
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp), contentPadding = PaddingValues(horizontal = 2.dp)) {
+        LazyRow(Modifier.sideScrollZone(), horizontalArrangement = Arrangement.spacedBy(14.dp), contentPadding = PaddingValues(horizontal = 2.dp)) {
             items(chosen, key = { it.key }) { app ->
                 Column(Modifier.width((b.iconSizeDp + 16).dp).nexusPress({ c.apps.launch(app) }), horizontalAlignment = Alignment.CenterHorizontally) {
                     Image(app.icon, app.label, Modifier.size(b.iconSizeDp.dp))
@@ -1057,7 +1057,7 @@ fun Dock(
             val slotMod = if (config.equalSlots) Modifier.width(slotW) else Modifier
             if (overflow && config.scrollable) {
                 Row(
-                    Modifier.fillMaxWidth().horizontalScrollCompat(),
+                    Modifier.fillMaxWidth().sideScrollZone().horizontalScrollCompat(),
                     horizontalArrangement = Arrangement.spacedBy(gap),
                     verticalAlignment = Alignment.CenterVertically,
                 ) { slots(slotMod) }

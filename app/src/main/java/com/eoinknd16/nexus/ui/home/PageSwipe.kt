@@ -14,6 +14,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlin.math.abs
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInRoot
 
 /** Wrapper so "main page" (null id) can be a target. */
 data class PageTarget(val id: String?)
@@ -88,4 +90,23 @@ class PageSwipe(private val scope: CoroutineScope, private val haptics: Haptics)
             offset = 0f
         }
     }
+}
+
+
+/**
+ * Areas that scroll sideways themselves (poster rows, app rows, a scrolling
+ * tray). Page swipes that start inside one are left to the row.
+ */
+object SideScrollZones {
+    private val zones = java.util.concurrent.ConcurrentHashMap<Any, androidx.compose.ui.geometry.Rect>()
+    fun set(key: Any, r: androidx.compose.ui.geometry.Rect) { zones[key] = r }
+    fun remove(key: Any) { zones.remove(key) }
+    fun contains(p: androidx.compose.ui.geometry.Offset): Boolean = zones.values.any { it.contains(p) }
+}
+
+/** Marks this element as a sideways-scrolling area (see [SideScrollZones]). */
+fun androidx.compose.ui.Modifier.sideScrollZone(): androidx.compose.ui.Modifier = androidx.compose.ui.composed {
+    val key = androidx.compose.runtime.remember { Any() }
+    androidx.compose.runtime.DisposableEffect(key) { onDispose { SideScrollZones.remove(key) } }
+    this.onGloballyPositioned { SideScrollZones.set(key, it.boundsInRoot()) }
 }

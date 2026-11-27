@@ -147,7 +147,7 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectHo
                     break
                 }
                 // Pages: a clearly sideways drag whose direction is bound to a page follows the finger.
-                if (pages != null && maxPointers == 1 && ax > touchSlop && ax > ay * 1.5f) {
+                if (pages != null && maxPointers == 1 && ax > touchSlop && ax > ay * 1.5f && !SideScrollZones.contains(start)) {
                     val hDir = if (delta.x < 0) Dir.Left else Dir.Right
                     // Page swipes work from anywhere on the screen, like any launcher.
                     val bound = overrideFor(hDir) ?: when (hDir) {
