@@ -543,6 +543,16 @@ private fun TileEditor(blockId: String?, existing: TileConfig?, onDismiss: () ->
                 SliderRow("Darken behind", t.folderDim, 0f..0.9f, { "${(it * 100).roundToInt()}%" }) { t = t.copy(folderDim = it) }
                 ChoiceRow("Opens", com.eoinknd16.nexus.look.FolderPosition.entries, t.folderPosition, { it.label }) { t = t.copy(folderPosition = it) }
                 SliderRow("Icon size", t.folderIconSize, 32f..96f, { "${it.roundToInt()}dp" }) { t = t.copy(folderIconSize = it) }
+                if (t.folderStyle == FolderStyle.Ring) {
+                    SliderRow(
+                        "Ring size", t.folderRingSize, 0f..600f,
+                        { if (it < 100f) "Auto (fits the apps)" else "${it.roundToInt()}dp across" },
+                    ) { t = t.copy(folderRingSize = if (it < 100f) 0f else it) }
+                    Text(
+                        "Auto makes the ring just big enough that no apps overlap. Too many for one ring on screen? The rest go on an inner ring.",
+                        style = MaterialTheme.typography.bodySmall, color = Nx.Muted,
+                    )
+                }
                 ToggleRow("App names", t.folderShowLabels) { t = t.copy(folderShowLabels = it) }
                 ToggleRow("Folder title", t.folderShowTitle) { t = t.copy(folderShowTitle = it) }
                 ToggleRow("Animate closing too", t.folderAnimateClose) { t = t.copy(folderAnimateClose = it) }
@@ -552,7 +562,7 @@ private fun TileEditor(blockId: String?, existing: TileConfig?, onDismiss: () ->
                     fun TileConfig.styled() = if (action.kind != TileAction.Kind.Folder) this else copy(
                         folderAnimation = src.folderAnimation, folderStyle = src.folderStyle, folderColumns = src.folderColumns,
                         folderPreview = src.folderPreview, folderBackground = src.folderBackground, folderBlur = src.folderBlur,
-                        folderDim = src.folderDim, folderPosition = src.folderPosition, folderIconSize = src.folderIconSize,
+                        folderDim = src.folderDim, folderPosition = src.folderPosition, folderIconSize = src.folderIconSize, folderRingSize = src.folderRingSize,
                         folderShowLabels = src.folderShowLabels, folderShowTitle = src.folderShowTitle, folderAnimateClose = src.folderAnimateClose,
                         folderShowEditButton = src.folderShowEditButton,
                         folderTileStyle = src.folderTileStyle, folderTileIconScale = src.folderTileIconScale, folderTileLabel = src.folderTileLabel,

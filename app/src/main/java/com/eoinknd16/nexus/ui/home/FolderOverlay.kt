@@ -270,31 +270,71 @@ private fun FolderApp(app: LaunchableApp, tile: TileConfig, delayIndex: Int, ani
     }
 }
 
-/** Apps orbiting a core; they fly out from the centre as it opens (and back in on close). */
+/**
+ * Apps orbiting a core; they fly out from the centre as it opens (and back in
+ * on close). The ring is sized so neighbours never overlap (or to the size
+ * you set); if there are more apps than fit around one ring on screen, the
+ * rest go on an inner ring.
+ */
 @Composable
 private fun RingLayout(apps: List<LaunchableApp>, accent: Color, tile: TileConfig, spread: Float, onLaunch: (LaunchableApp) -> Unit) {
     val iconSize = tile.folderIconSize.coerceIn(32f, 96f)
-    BoxWithConstraints(Modifier.fillMaxWidth().height((iconSize * 6).dp.coerceAtMost(420.dp)), contentAlignment = Alignment.Center) {
+    val cell = iconSize + 22f // one app's footprint around the ring, dp
+    val gap = 1.12f
+    BoxWithConstraints(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
         val density = LocalDensity.current
-        val radiusPx = with(density) { (minOf(maxWidth, maxHeight) / 2 - (iconSize / 2 + 20).dp).toPx() }
-        if (tile.folderBackground != FolderBackground.None) Box(Modifier.size(56.dp).holoPanel(accent, 0.8f))
-        apps.forEachIndexed { i, app ->
-            val angle = 2 * PI * i / apps.size - PI / 2
-            val r = radiusPx * spread
-            Column(
-                Modifier
-                    .offset { IntOffset((cos(angle) * r).roundToInt(), (sin(angle) * r).roundToInt()) }
-                    .width((iconSize + 22).dp)
-                    .nexusPress({ onLaunch(app) }),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Image(app.icon, app.label, Modifier.size(iconSize.dp))
-                if (tile.folderShowLabels) {
-                    Text(
-                        app.label, style = MaterialTheme.typography.labelSmall,
-                        color = if (tile.folderBackground == FolderBackground.None) Color.White else Nx.Text,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    )
+        // Biggest radius that keeps every icon on screen.
+        val maxR = (maxWidth.value / 2 - cell / 2 - 8f).coerceAtLeast(cell)
+        val n = apps.size.coerceAtLeast(1)
+        // Radius needed so n apps sit around the ring without touching.
+        val needed = n * cell * gap / (2 * PI.toFloat())
+        val wanted = if (tile.folderRingSize > 0f) tile.folderRingSize / 2 - iconSize / 2 else maxOf(needed, iconSize * 1.6f)
+        val outerR = wanted.coerceIn(cell * 0.9f, maxR)
+        // Split into rings, outermost first, until everyone has a spot.
+        val rings = mutableListOf<Pair<Float, Int>>() // radius dp to how many apps
+        var left = n
+        var r = outerR
+        while (left > 0) {
+            val capacity = if (r < cell * 0.6f) left else maxOf(1, (2 * PI.toFloat() * r / (cell * gap)).toInt())
+            val take = minOf(left, capacity)
+            rings += r to take
+            left -= take
+            r -= cell * 1.15f
+        }
+        // Balance two rings so the outer one isn't crammed and the inner one sparse.
+        if (rings.size == 2) {
+            val (r1, _) = rings[0]; val (r2, _) = rings[1]
+            val c1 = (n * r1 / (r1 + r2)).roundToInt().coerceAtMost(maxOf(1, (2 * PI.toFloat() * r1 / (cell * gap)).toInt()))
+            rings[0] = r1 to c1; rings[1] = r2 to (n - c1)
+        }
+        val boxSize = (outerR * 2 + cell + 24f).dp
+        Box(Modifier.size(boxSize), contentAlignment = Alignment.Center) {
+            if (tile.folderBackground != FolderBackground.None) Box(Modifier.size(56.dp).holoPanel(accent, 0.8f))
+            var index = 0
+            rings.forEachIndexed { ringNo, (radius, count) ->
+                val radiusPx = with(density) { radius.dp.toPx() }
+                // Stagger alternate rings so icons don't line up spoke-like.
+                val offset = if (ringNo % 2 == 1) PI / count else 0.0
+                for (k in 0 until count) {
+                    val app = apps[index++]
+                    val angle = 2 * PI * k / count - PI / 2 + offset
+                    val rr = radiusPx * spread
+                    Column(
+                        Modifier
+                            .offset { IntOffset((cos(angle) * rr).roundToInt(), (sin(angle) * rr).roundToInt()) }
+                            .width(cell.dp)
+                            .nexusPress({ onLaunch(app) }),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Image(app.icon, app.label, Modifier.size(iconSize.dp))
+                        if (tile.folderShowLabels) {
+                            Text(
+                                app.label, style = MaterialTheme.typography.labelSmall,
+                                color = if (tile.folderBackground == FolderBackground.None) Color.White else Nx.Text,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
                 }
             }
         }

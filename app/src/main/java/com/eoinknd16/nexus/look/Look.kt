@@ -587,6 +587,8 @@ data class TileConfig(
     val folderAnimateClose: Boolean = true,
     /** Pencil button inside the open folder (long-pressing the tile edits it either way). */
     val folderShowEditButton: Boolean = false,
+    /** Orbit ring: diameter in dp; 0 = auto (big enough that the apps never overlap). */
+    val folderRingSize: Float = 0f,
     /** How a folder looks on its tile: a small preview icon, icons filling the tile, or loose icons with physics. */
     val folderTileStyle: FolderTileStyle = FolderTileStyle.Fill,
     /** Icon size on the tile in Fill / Physics, relative to the space available. */
