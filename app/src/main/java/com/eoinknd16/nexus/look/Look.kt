@@ -27,6 +27,31 @@ data class Look(
     val tv: TvStyle = TvStyle(),
     val player: PlayerPrefs = PlayerPrefs(),
     val weather: WeatherPrefs = WeatherPrefs(),
+    val spotify: SpotifyLook = SpotifyLook(),
+)
+
+enum class SpArtStyle(val label: String) { Rounded("Rounded"), Square("Square"), Vinyl("Spinning vinyl") }
+
+/** The Spotify control centre, from its own look panel (tune icon, top right). */
+@Serializable
+data class SpotifyLook(
+    /** "library" or "player". */
+    val openOn: String = "library",
+    val miniPlayer: Boolean = true,
+    val artStyle: SpArtStyle = SpArtStyle.Rounded,
+    /** Soft glow of the album art behind the player. */
+    val artGlow: Boolean = true,
+    val glowStrength: Float = 0.45f,
+    /** Tint buttons and bars with the album art's colour. */
+    val artColours: Boolean = true,
+    /** Playlists / albums as a grid (else a list). */
+    val gridLibrary: Boolean = true,
+    val gridColumns: Int = 2,
+    val compactRows: Boolean = false,
+    val showUpNext: Boolean = true,
+    val showPlaylistsShelf: Boolean = true,
+    val showOnRepeat: Boolean = true,
+    val showRecent: Boolean = true,
 )
 
 /** Colours as #RRGGBB / #AARRGGBB strings (readable + hand-editable in exported JSON). */

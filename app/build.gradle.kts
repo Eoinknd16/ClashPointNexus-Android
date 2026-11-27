@@ -101,6 +101,8 @@ dependencies {
     // Installs the baseline profiles that ship inside Compose etc. on sideloaded installs,
     // so code is pre-compiled instead of running interpreted for the first sessions.
     implementation("androidx.profileinstaller:profileinstaller:1.4.1")
+    // Album-art colours for the Spotify control centre.
+    implementation("androidx.palette:palette-ktx:1.0.0")
     // On-device Gemini Nano (the phone's built-in AI) for Ask Nexus.
     implementation("com.google.mlkit:genai-prompt:1.0.0-beta4")
     debugImplementation(libs.androidx.compose.ui.tooling)
