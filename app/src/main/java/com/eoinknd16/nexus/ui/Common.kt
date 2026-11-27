@@ -66,6 +66,7 @@ object Routes {
     const val SETTINGS = "settings"
     const val ADDONS = "addons"
     const val CUSTOMIZE = "customize"
+    const val SPOTIFY = "spotify"
 
     fun detail(type: String, id: String) = "detail/$type/${android.net.Uri.encode(id)}"
 }

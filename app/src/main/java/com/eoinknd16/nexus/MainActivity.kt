@@ -75,13 +75,19 @@ open class MainActivity : ComponentActivity() {
     /** Fires when the Home button is pressed while Nexus is already the
      * foreground home app -- Android delivers that as a new HOME intent. */
     private val homePressed = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    private val openSpotify = MutableSharedFlow<Unit>(replay = 1, extraBufferCapacity = 1)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (intent?.data?.let { it.scheme == "nexus" && it.host == "spotify" } == true) openSpotify.tryEmit(Unit)
         enableEdgeToEdge()
         setContent {
             NexusTheme {
                 val nav = rememberNavController()
+                // nexus://spotify (the "Back to Nexus" link after Spotify sign-in).
+                LaunchedEffect(Unit) {
+                    openSpotify.collect { if (nav.currentDestination?.route != Routes.SPOTIFY) nav.navigate(Routes.SPOTIFY) }
+                }
                 LaunchedEffect(Unit) {
                     homePressed.collect {
                         nav.popBackStack(startRoute, inclusive = false)
@@ -122,6 +128,7 @@ open class MainActivity : ComponentActivity() {
                         composable(Routes.SETTINGS) { SettingsScreen() }
                         composable(Routes.ADDONS) { AddonsScreen() }
                         composable(Routes.CUSTOMIZE) { CustomizeScreen() }
+                        composable(Routes.SPOTIFY) { com.eoinknd16.nexus.ui.spotify.SpotifyScreen() }
                     }
                     com.eoinknd16.nexus.ui.NightVeil()
                     com.eoinknd16.nexus.ui.UndoBar()
@@ -169,6 +176,7 @@ open class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        if (intent.data?.let { it.scheme == "nexus" && it.host == "spotify" } == true) { openSpotify.tryEmit(Unit); return }
         if (intent.action == Intent.ACTION_MAIN && intent.hasCategory(Intent.CATEGORY_HOME)) {
             homePressed.tryEmit(Unit)
             com.eoinknd16.nexus.look.HomePager.home()

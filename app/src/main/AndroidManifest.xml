@@ -76,6 +76,13 @@
                 <category android:name="android.intent.category.HOME" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
+            <!-- nexus://spotify: back into the Spotify control centre after signing in. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="nexus" android:host="spotify" />
+            </intent-filter>
         </activity>
         <service
             android:name=".core.NexusAccessibilityService"

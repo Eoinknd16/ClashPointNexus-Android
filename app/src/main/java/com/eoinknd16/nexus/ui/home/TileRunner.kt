@@ -32,6 +32,7 @@ val SCREEN_TARGETS = listOf(
     "tv" to "TV",
     "search" to "Search movies & shows",
     "pc" to "PC remote",
+    "spotify" to "Spotify control centre",
     "apps" to "App drawer",
     "settings" to "Settings",
     "customize" to "Customise",
@@ -71,6 +72,7 @@ fun screenRoute(key: String): String? = when (key) {
     "settings" -> Routes.SETTINGS
     "customize" -> Routes.CUSTOMIZE
     "addons" -> Routes.ADDONS
+    "spotify" -> Routes.SPOTIFY
     else -> null
 }
 

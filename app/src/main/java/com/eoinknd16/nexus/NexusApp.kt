@@ -73,6 +73,9 @@ class AppContainer(app: Application) {
     /** Every paired PC (the active one is [pcStore]). */
     val pcSaved = JsonStore(ds, "pc_saved", com.eoinknd16.nexus.link.SavedPcs.serializer(), com.eoinknd16.nexus.link.SavedPcs(), scope)
     val pc = PcLinkClient(pcStore, pcSaved)
+    val spotify = com.eoinknd16.nexus.spotify.Spotify(
+        app, JsonStore(ds, "spotify", com.eoinknd16.nexus.spotify.SpotifyPrefs.serializer(), com.eoinknd16.nexus.spotify.SpotifyPrefs(), scope), scope,
+    )
 
     val media = MediaRepository(
         addonStore = JsonStore(ds, "addons", MediaRepository.addonListSerializer, emptyList(), scope),
