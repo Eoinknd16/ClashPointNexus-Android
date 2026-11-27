@@ -80,6 +80,7 @@ import com.eoinknd16.nexus.look.TempUnit
 import com.eoinknd16.nexus.look.TileAction
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.eoinknd16.nexus.look.parseColor
+import com.eoinknd16.nexus.look.toHex
 import com.eoinknd16.nexus.look.updateDock
 import com.eoinknd16.nexus.ui.LocalNav
 import com.eoinknd16.nexus.ui.Routes
@@ -195,6 +196,25 @@ fun CustomizeScreen() {
                 }
 
                 Section("Colours", "Accent ${look.palette.accent.uppercase()} · panels ${(look.palette.panelOpacity * 100).roundToInt()}%", icon = androidx.compose.material.icons.Icons.Filled.PaletteIcon, onReset = { edit(undoLabel = "Colours reset") { it.copy(palette = Palette()) } }) {
+                    if (android.os.Build.VERSION.SDK_INT >= 31 && LocalRowQuery.current.isBlank()) {
+                        // Material You: pull the accents from the phone's wallpaper.
+                        val scheme = androidx.compose.material3.dynamicDarkColorScheme(context)
+                        NexusButton("Use my wallpaper colours", icon = Icons.Filled.Edit, accent = Nx.Magenta) {
+                            edit("Wallpaper colours applied") {
+                                it.copy(
+                                    palette = it.palette.copy(
+                                        accent = scheme.primary.toHex(),
+                                        accent2 = scheme.tertiary.toHex(),
+                                        warn = scheme.secondary.toHex(),
+                                        text = scheme.onSurface.toHex(),
+                                        muted = scheme.onSurfaceVariant.toHex(),
+                                    ),
+                                    presetName = "Wallpaper",
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                    }
                     ColorRow("Accent", look.palette.accent) { v -> pal { it.copy(accent = v) } }
                     ColorRow("Second accent", look.palette.accent2) { v -> pal { it.copy(accent2 = v) } }
                     ColorRow("Warning / highlight", look.palette.warn) { v -> pal { it.copy(warn = v) } }
