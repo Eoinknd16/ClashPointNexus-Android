@@ -36,6 +36,16 @@ android {
         }
     }
 
+    // phone = the launcher; tv = the TV section on its own, for Fire TV / Android TV.
+    flavorDimensions += "form"
+    productFlavors {
+        create("phone") { dimension = "form" }
+        create("tv") {
+            dimension = "form"
+            applicationIdSuffix = ".tv"
+        }
+    }
+
     buildTypes {
         debug {
             signingConfig = signingConfigs.getByName("nexus")

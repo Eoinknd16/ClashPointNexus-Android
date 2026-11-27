@@ -258,6 +258,12 @@ fun PlayerScreen() {
                         ResizeMode.Zoom -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                     }
                     keepScreenOn = true
+                    // Remote: the player takes the D-pad (OK = play/pause and controls, left/right = seek).
+                    if (com.eoinknd16.nexus.ui.fx.TvMode.enabled) {
+                        isFocusable = true
+                        isFocusableInTouchMode = true
+                        post { requestFocus() }
+                    }
                     setShowSubtitleButton(true)
                     subtitleView?.apply {
                         setStyle(

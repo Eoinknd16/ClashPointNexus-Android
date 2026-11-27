@@ -42,18 +42,19 @@ jobs:
           echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Build debug APK
-        run: ./gradlew --no-daemon assembleDebug
+        run: ./gradlew --no-daemon assemblePhoneDebug
 
       - uses: actions/upload-artifact@v4
         with:
           name: nexus-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          path: app/build/outputs/apk/phone/debug/*.apk
 
       - name: Build release APK
         if: steps.ver.outputs.tag != ''
         run: |
-          ./gradlew --no-daemon assembleRelease
-          cp app/build/outputs/apk/release/*.apk "nexus-${{ steps.ver.outputs.tag }}.apk"
+          ./gradlew --no-daemon assemblePhoneRelease assembleTvRelease
+          cp app/build/outputs/apk/phone/release/*.apk "nexus-${{ steps.ver.outputs.tag }}.apk"
+          cp app/build/outputs/apk/tv/release/*.apk "nexus-${{ steps.ver.outputs.tag }}-tv.apk"
 
       - name: Publish release
         if: steps.ver.outputs.tag != ''
@@ -65,3 +66,11 @@ jobs:
           files: nexus-${{ steps.ver.outputs.tag }}.apk
           generate_release_notes: true
           make_latest: true
+
+      # Fire TV build, uploaded after the phone APK so older phone updaters
+      # (which take the first .apk) keep getting the phone one.
+      - name: Attach Fire TV APK
+        if: steps.ver.outputs.tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ steps.ver.outputs.tag }}" "nexus-${{ steps.ver.outputs.tag }}-tv.apk" -R "${{ github.repository }}"

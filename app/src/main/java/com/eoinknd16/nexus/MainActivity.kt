@@ -66,7 +66,11 @@ object ScreenTransitions {
     }
 }
 
-class MainActivity : ComponentActivity() {
+open class MainActivity : ComponentActivity() {
+
+    /** Where the app opens: the home screen here, the TV section in the Fire TV build. */
+    protected open val startRoute: String = Routes.HOME
+
 
     /** Fires when the Home button is pressed while Nexus is already the
      * foreground home app -- Android delivers that as a new HOME intent. */
@@ -80,7 +84,7 @@ class MainActivity : ComponentActivity() {
                 val nav = rememberNavController()
                 LaunchedEffect(Unit) {
                     homePressed.collect {
-                        nav.popBackStack(Routes.HOME, inclusive = false)
+                        nav.popBackStack(startRoute, inclusive = false)
                     }
                 }
                 com.eoinknd16.nexus.ui.fx.NeonClockDriver()
@@ -92,7 +96,7 @@ class MainActivity : ComponentActivity() {
                 CompositionLocalProvider(LocalNav provides nav) {
                     NavHost(
                         navController = nav,
-                        startDestination = Routes.HOME,
+                        startDestination = startRoute,
                         enterTransition = { ScreenTransitions.enter(t, ms, pop = false) },
                         exitTransition = { ScreenTransitions.exit(t, ms, pop = false) },
                         popEnterTransition = { ScreenTransitions.enter(t, ms, pop = true) },
@@ -171,4 +175,10 @@ class MainActivity : ComponentActivity() {
             com.eoinknd16.nexus.ui.home.HomeDrawerHub.controller?.reset()
         }
     }
+}
+
+
+/** Fire TV / Android TV entry point: opens straight into the TV section. */
+class TvActivity : MainActivity() {
+    override val startRoute: String = Routes.TV
 }

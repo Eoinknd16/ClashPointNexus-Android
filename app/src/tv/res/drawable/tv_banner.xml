@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 320x180 Fire TV / Android TV banner: dark gradient with the Nexus mark. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp" android:height="180dp">
+    <item>
+        <shape>
+            <gradient android:angle="315" android:startColor="#FF050A14" android:endColor="#FF0B2238" />
+        </shape>
+    </item>
+    <item android:drawable="@drawable/ic_launcher_foreground"
+        android:width="180dp" android:height="180dp" android:gravity="center" />
+</layer-list>

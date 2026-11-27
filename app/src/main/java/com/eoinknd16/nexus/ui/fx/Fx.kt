@@ -65,6 +65,11 @@ import com.eoinknd16.nexus.look.BackdropStyle
 import com.eoinknd16.nexus.look.BorderOverride
 import com.eoinknd16.nexus.look.BorderStyle
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.foundation.focusable
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -523,7 +528,35 @@ fun Modifier.nexusPress(onClick: () -> Unit, onLongClick: (() -> Unit)? = null):
         if (motion.animations) nexusSpring() else snap(),
         label = "press",
     )
+    // Fire TV / remotes: focusable, a glowing ring + lift when focused,
+    // OK/Enter to click and Menu for the long-press action.
+    val tvFocus = if (TvMode.enabled) {
+        var focused by remember { mutableStateOf(false) }
+        val lift by animateFloatAsState(if (focused) 1.07f else 1f, nexusSpring(), label = "tvFocus")
+        Modifier
+            .scale(lift)
+            .drawWithContent {
+                drawContent()
+                if (focused) {
+                    val r = androidx.compose.ui.geometry.CornerRadius(14.dp.toPx())
+                    drawRoundRect(Nx.Cyan.copy(alpha = 0.22f), cornerRadius = r)
+                    drawRoundRect(Nx.Cyan, cornerRadius = r, style = androidx.compose.ui.graphics.drawscope.Stroke(3.dp.toPx()))
+                }
+            }
+            .onFocusChanged { focused = it.isFocused }
+            .onKeyEvent { e ->
+                if (e.type != androidx.compose.ui.input.key.KeyEventType.KeyUp) return@onKeyEvent false
+                when (e.key) {
+                    androidx.compose.ui.input.key.Key.DirectionCenter, androidx.compose.ui.input.key.Key.Enter,
+                    androidx.compose.ui.input.key.Key.NumPadEnter, androidx.compose.ui.input.key.Key.ButtonA -> { onClick(); true }
+                    androidx.compose.ui.input.key.Key.Menu -> { onLongClick?.invoke(); onLongClick != null }
+                    else -> false
+                }
+            }
+            .focusable()
+    } else Modifier
     return this
+        .then(tvFocus)
         .scale(scale)
         .pointerInput(onClick, onLongClick, motion.haptics) {
             detectTapGestures(
@@ -619,4 +652,10 @@ fun GlowProgress(fraction: Float, modifier: Modifier = Modifier, color: Color = 
         drawRect(Brush.horizontalGradient(listOf(color.copy(alpha = 0.4f), color)), size = size.copy(width = w))
         drawCircle(color, radius = size.height * 1.6f, center = Offset(w, size.height / 2))
     }
+}
+
+
+/** True on Fire TV / Android TV (or the TV build): remote-friendly focus everywhere. */
+object TvMode {
+    var enabled: Boolean = false
 }

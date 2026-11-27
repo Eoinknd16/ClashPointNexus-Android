@@ -69,7 +69,11 @@ class Updater(private val context: Context) {
             val tag = (root["tag_name"] as? JsonPrimitive)?.contentOrNull ?: error("No release found")
             val version = tag.removePrefix("v")
             val asset = (root["assets"] as? JsonArray)?.mapNotNull { it as? JsonObject }
-                ?.firstOrNull { (it["name"] as? JsonPrimitive)?.contentOrNull?.endsWith(".apk") == true }
+                ?.firstOrNull {
+                    val name = (it["name"] as? JsonPrimitive)?.contentOrNull.orEmpty()
+                    // The release carries the phone APK and the Fire TV one (…-tv.apk).
+                    if (com.eoinknd16.nexus.BuildConfig.FLAVOR == "tv") name.endsWith("-tv.apk") else name.endsWith(".apk") && !name.endsWith("-tv.apk")
+                }
                 ?: error("Release $tag has no APK")
             val url = (asset["browser_download_url"] as? JsonPrimitive)?.contentOrNull ?: error("No download link")
             val size = (asset["size"] as? JsonPrimitive)?.contentOrNull?.toLongOrNull() ?: 0L

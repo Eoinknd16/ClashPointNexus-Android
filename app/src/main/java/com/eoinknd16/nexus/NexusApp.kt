@@ -26,6 +26,8 @@ class NexusApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        com.eoinknd16.nexus.ui.fx.TvMode.enabled = BuildConfig.FLAVOR == "tv" ||
+            packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)
         CrashReports.install(this)
         container = AppContainer(this)
     }
