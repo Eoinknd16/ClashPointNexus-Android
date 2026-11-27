@@ -138,7 +138,14 @@ fun AppDrawerContent(
     Column(modifier) {
         ScreenHeader("Apps", "${apps.size} installed") {
             headerExtra()
-            Box(Modifier.size(40.dp).nexusPress({ showHidden = !showHidden }), contentAlignment = Alignment.Center) {
+            val ctx = androidx.compose.ui.platform.LocalContext.current
+            Box(
+                Modifier.size(40.dp).nexusPress({
+                    if (showHidden || !drawer.lockHidden) showHidden = !showHidden
+                    else unlockHidden(ctx) { showHidden = true }
+                }),
+                contentAlignment = Alignment.Center,
+            ) {
                 Icon(
                     if (showHidden) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
                     if (showHidden) "Hide hidden apps" else "Show hidden apps",
@@ -244,6 +251,27 @@ private val CATEGORY_NAMES = mapOf(
     android.content.pm.ApplicationInfo.CATEGORY_MAPS to "Maps",
     android.content.pm.ApplicationInfo.CATEGORY_PRODUCTIVITY to "Productivity",
 )
+
+/** Fingerprint / face / screen lock before showing hidden apps (Android 11+; older phones just show them). */
+private fun unlockHidden(context: android.content.Context, onOk: () -> Unit) {
+    if (android.os.Build.VERSION.SDK_INT < 30) { onOk(); return }
+    runCatching {
+        val prompt = android.hardware.biometrics.BiometricPrompt.Builder(context)
+            .setTitle("Show hidden apps")
+            .setAllowedAuthenticators(
+                android.hardware.biometrics.BiometricManager.Authenticators.BIOMETRIC_WEAK or
+                    android.hardware.biometrics.BiometricManager.Authenticators.DEVICE_CREDENTIAL,
+            )
+            .build()
+        prompt.authenticate(
+            android.os.CancellationSignal(),
+            context.mainExecutor,
+            object : android.hardware.biometrics.BiometricPrompt.AuthenticationCallback() {
+                override fun onAuthenticationSucceeded(result: android.hardware.biometrics.BiometricPrompt.AuthenticationResult?) = onOk()
+            },
+        )
+    }.onFailure { onOk() } // no lock set up on the phone: nothing to protect with
+}
 
 private fun firstLetter(label: String): Char = label.trim().firstOrNull()?.uppercaseChar()?.takeIf { it.isLetter() } ?: '#'
 

@@ -341,6 +341,7 @@ fun CustomizeScreen() {
                         { k -> if (k.isEmpty()) "Apps' own icons" else packs.firstOrNull { it.first == k }?.second ?: k },
                         subtitle = if (packs.isEmpty()) "Install a Nova/ADW-style icon pack from the Play Store to use it here" else null,
                     ) { k -> appsRepo.setIconPack(k) }
+                    ToggleRow("Lock hidden apps", d.lockHidden, "Fingerprint, face or screen lock to show them") { v -> edit { it.copy(drawer = d.copy(lockHidden = v)) } }
                     ToggleRow("Suggested apps row", d.showSuggestions, "Based on what you open around this time of day") { v -> edit { it.copy(drawer = d.copy(showSuggestions = v)) } }
                     ToggleRow("Search box", d.showSearch) { v -> edit { it.copy(drawer = d.copy(showSearch = v)) } }
                     ToggleRow("Open keyboard straight away", d.autoFocusSearch) { v -> edit { it.copy(drawer = d.copy(autoFocusSearch = v)) } }

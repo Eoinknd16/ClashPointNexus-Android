@@ -663,6 +663,8 @@ data class DrawerStyle(
     val autoFocusSearch: Boolean = false,
     /** A row of suggested apps at the top of the drawer. */
     val showSuggestions: Boolean = true,
+    /** Showing hidden apps needs your fingerprint / face / screen lock. */
+    val lockHidden: Boolean = false,
 )
 
 @Serializable
