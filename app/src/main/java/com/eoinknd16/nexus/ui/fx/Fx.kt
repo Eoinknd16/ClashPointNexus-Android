@@ -287,7 +287,7 @@ private fun ShaderBackdrop(shader: RuntimeShader, intensity: Float) {
         BackdropStyle.Nebula -> 1f
         BackdropStyle.Stars -> 2f
         BackdropStyle.Waves -> 3f
-        BackdropStyle.Plain -> 4f
+        BackdropStyle.Plain, BackdropStyle.Wallpaper -> 4f
     }
     Box(
         Modifier.fillMaxSize().drawWithCache {

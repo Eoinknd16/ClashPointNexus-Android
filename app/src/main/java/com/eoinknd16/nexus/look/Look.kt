@@ -471,6 +471,7 @@ sealed class HomeBlock {
             is Spacer -> "Spacer"
             is Glance -> "At a glance"
             is Liquid -> "Liquid battery"
+            is Rings -> "Device rings"
         }
 
     fun withVisible(v: Boolean): HomeBlock = copyMeta(visible = v)
@@ -491,6 +492,7 @@ sealed class HomeBlock {
         is Spacer -> copy(visible = visible, pin = pin, locked = locked)
         is Glance -> copy(visible = visible, pin = pin, locked = locked)
         is Liquid -> copy(visible = visible, pin = pin, locked = locked)
+        is Rings -> copy(visible = visible, pin = pin, locked = locked)
     }
 }
 
