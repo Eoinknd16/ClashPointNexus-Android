@@ -137,5 +137,6 @@ val addableBlocks: List<Pair<String, () -> HomeBlock>> = listOf(
     "Suggested apps" to { HomeBlock.AppRow(title = "Suggested", suggested = true) },
     "At a glance" to { HomeBlock.Glance() },
     "Liquid battery (sloshes when you tilt)" to { HomeBlock.Liquid() },
+    "Device rings (battery, storage, memory, day)" to { HomeBlock.Rings() },
     "Picked for you (what to watch)" to { HomeBlock.Posters(title = "Picked for you", source = PosterSource.ForYou) },
 )

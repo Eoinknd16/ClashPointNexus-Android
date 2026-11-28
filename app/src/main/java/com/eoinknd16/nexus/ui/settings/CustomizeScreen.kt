@@ -210,6 +210,10 @@ fun CustomizeScreen() {
                 }
 
                 Section("Colours", "Accent ${look.palette.accent.uppercase()} · panels ${(look.palette.panelOpacity * 100).roundToInt()}%", icon = androidx.compose.material.icons.Icons.Filled.PaletteIcon, onReset = { edit(undoLabel = "Colours reset") { it.copy(palette = Palette()) } }) {
+                    if (android.os.Build.VERSION.SDK_INT >= 31) ToggleRow(
+                        "Follow my wallpaper's colours", look.palette.followWallpaper,
+                        "Colours come from your wallpaper (Material You) and change when you change it",
+                    ) { v -> edit { it.copy(palette = it.palette.copy(followWallpaper = v)) } }
                     if (android.os.Build.VERSION.SDK_INT >= 31 && LocalRowQuery.current.isBlank()) {
                         // Material You: pull the accents from the phone's wallpaper.
                         val scheme = androidx.compose.material3.dynamicDarkColorScheme(context)
@@ -276,6 +280,10 @@ fun CustomizeScreen() {
                 Section("Backdrop", "${look.backdrop.style.label}" + if (look.backdrop.animated) "" else " · still", icon = androidx.compose.material.icons.Icons.Filled.Wallpaper, onReset = { edit(undoLabel = "Backdrop reset") { it.copy(backdrop = com.eoinknd16.nexus.look.Backdrop()) } }) {
                     val b = look.backdrop
                     ChoiceRow("Style", BackdropStyle.entries, b.style, { it.label }) { v -> edit { it.copy(backdrop = b.copy(style = v)) } }
+                    if (b.style == BackdropStyle.Wallpaper) {
+                        SliderRow("Darken the wallpaper", b.wallpaperDim, 0f..0.9f, { "${(it * 100).roundToInt()}%" }) { v -> edit { it.copy(backdrop = b.copy(wallpaperDim = v)) } }
+                        if (android.os.Build.VERSION.SDK_INT >= 31) SliderRow("Blur the wallpaper", b.wallpaperBlur, 0f..60f, { if (it < 1f) "Off" else "${it.roundToInt()}dp" }) { v -> edit { it.copy(backdrop = b.copy(wallpaperBlur = v)) } }
+                    }
                     SliderRow("Intensity", b.intensity, 0f..1.6f, { "${(it * 100).roundToInt()}%" }) { v -> edit { it.copy(backdrop = b.copy(intensity = v)) } }
                     SliderRow("Speed", b.speed, 0f..3f, { "%.1f×".format(it) }) { v -> edit { it.copy(backdrop = b.copy(speed = v)) } }
                     ToggleRow("Animated", b.animated, "Off saves a little battery") { v -> edit { it.copy(backdrop = b.copy(animated = v)) } }

@@ -28,7 +28,30 @@ fun Color.toHex(withAlpha: Boolean = alpha < 1f): String {
 }
 
 /** [Palette] with every colour parsed once, instead of on every read. */
+/** The phone's Material You colours (from its wallpaper), read on Android 12+. */
+object WallpaperColours {
+    data class Set(val accent: String, val accent2: String, val warn: String, val background: String, val deep: String, val panel: String, val text: String, val muted: String)
+    var current: Set? = null
+        private set
+    var stamp = 0
+        private set
+
+    fun load(context: android.content.Context) {
+        if (android.os.Build.VERSION.SDK_INT < 31) return
+        fun c(id: Int) = String.format("#%06X", 0xFFFFFF and context.getColor(id))
+        val next = Set(
+            accent = c(android.R.color.system_accent1_200), accent2 = c(android.R.color.system_accent3_200),
+            warn = c(android.R.color.system_accent2_200), background = c(android.R.color.system_neutral1_900),
+            deep = c(android.R.color.system_neutral1_1000), panel = c(android.R.color.system_neutral2_800),
+            text = c(android.R.color.system_neutral1_50), muted = c(android.R.color.system_neutral2_300),
+        )
+        if (next != current) { current = next; stamp++ }
+    }
+}
+
 class ResolvedPalette(p: Palette) {
+    /** Which wallpaper colours this was built from (so a wallpaper change rebuilds it). */
+    var dynamicStamp = 0
     val accent = parseColor(p.accent)
     val accent2 = parseColor(p.accent2)
     val warn = parseColor(p.warn)
@@ -65,6 +88,29 @@ fun FontChoice.family(): FontFamily = when (this) {
     FontChoice.Casual -> FontFamily(Typeface.create("casual", Typeface.NORMAL))
     FontChoice.Cursive -> FontFamily.Cursive
     FontChoice.SmallCaps -> FontFamily(Typeface.create("sans-serif-smallcaps", Typeface.NORMAL))
+    FontChoice.Inter -> BundledFonts.inter
+    FontChoice.Manrope -> BundledFonts.manrope
+    FontChoice.SpaceGrotesk -> BundledFonts.spaceGrotesk
+    FontChoice.Sora -> BundledFonts.sora
+    FontChoice.JetBrainsMono -> BundledFonts.jetbrains
+    FontChoice.Outfit -> BundledFonts.outfit
+    FontChoice.Unbounded -> BundledFonts.unbounded
+    FontChoice.Syne -> BundledFonts.syne
+    FontChoice.Playfair -> BundledFonts.playfair
+}
+
+/** Typefaces shipped with Nexus (res/font), four weights each: light for clocks, regular, semibold, heavy. */
+object BundledFonts {
+    private fun fam(vararg f: Pair<Int, Int>) = FontFamily(f.map { (res, w) -> androidx.compose.ui.text.font.Font(res, androidx.compose.ui.text.font.FontWeight(w)) })
+    val inter by lazy { fam(com.eoinknd16.nexus.R.font.inter_300light to 300, com.eoinknd16.nexus.R.font.inter_400regular to 400, com.eoinknd16.nexus.R.font.inter_600semibold to 600, com.eoinknd16.nexus.R.font.inter_800extrabold to 800) }
+    val manrope by lazy { fam(com.eoinknd16.nexus.R.font.manrope_200extralight to 200, com.eoinknd16.nexus.R.font.manrope_400regular to 400, com.eoinknd16.nexus.R.font.manrope_600semibold to 600, com.eoinknd16.nexus.R.font.manrope_800extrabold to 800) }
+    val spaceGrotesk by lazy { fam(com.eoinknd16.nexus.R.font.space_grotesk_300light to 300, com.eoinknd16.nexus.R.font.space_grotesk_400regular to 400, com.eoinknd16.nexus.R.font.space_grotesk_600semibold to 600, com.eoinknd16.nexus.R.font.space_grotesk_700bold to 700) }
+    val sora by lazy { fam(com.eoinknd16.nexus.R.font.sora_200extralight to 200, com.eoinknd16.nexus.R.font.sora_400regular to 400, com.eoinknd16.nexus.R.font.sora_600semibold to 600, com.eoinknd16.nexus.R.font.sora_800extrabold to 800) }
+    val jetbrains by lazy { fam(com.eoinknd16.nexus.R.font.jetbrains_mono_200extralight to 200, com.eoinknd16.nexus.R.font.jetbrains_mono_400regular to 400, com.eoinknd16.nexus.R.font.jetbrains_mono_600semibold to 600, com.eoinknd16.nexus.R.font.jetbrains_mono_800extrabold to 800) }
+    val outfit by lazy { fam(com.eoinknd16.nexus.R.font.outfit_200extralight to 200, com.eoinknd16.nexus.R.font.outfit_400regular to 400, com.eoinknd16.nexus.R.font.outfit_600semibold to 600, com.eoinknd16.nexus.R.font.outfit_800extrabold to 800) }
+    val unbounded by lazy { fam(com.eoinknd16.nexus.R.font.unbounded_300light to 300, com.eoinknd16.nexus.R.font.unbounded_400regular to 400, com.eoinknd16.nexus.R.font.unbounded_600semibold to 600, com.eoinknd16.nexus.R.font.unbounded_800extrabold to 800) }
+    val syne by lazy { fam(com.eoinknd16.nexus.R.font.syne_400regular to 400, com.eoinknd16.nexus.R.font.syne_600semibold to 600, com.eoinknd16.nexus.R.font.syne_700bold to 700, com.eoinknd16.nexus.R.font.syne_800extrabold to 800) }
+    val playfair by lazy { fam(com.eoinknd16.nexus.R.font.playfair_display_400regular to 400, com.eoinknd16.nexus.R.font.playfair_display_600semibold to 600, com.eoinknd16.nexus.R.font.playfair_display_800extrabold to 800) }
 }
 
 /**
@@ -80,7 +126,19 @@ object LookState {
         private set
 
     fun apply(newLook: Look) {
-        if (newLook.palette != look.palette) palette = ResolvedPalette(newLook.palette)
+        if (newLook.palette != look.palette || palette.dynamicStamp != WallpaperColours.stamp) palette = resolve(newLook.palette)
         look = newLook
+    }
+
+    /** The wallpaper changed: re-match the colours if the palette follows it. */
+    fun wallpaperChanged() {
+        if (look.palette.followWallpaper) palette = resolve(look.palette)
+    }
+
+    private fun resolve(p: Palette): ResolvedPalette {
+        val w = WallpaperColours.current
+        return if (p.followWallpaper && w != null) ResolvedPalette(
+            p.copy(accent = w.accent, accent2 = w.accent2, warn = w.warn, background = w.background, deep = w.deep, panel = w.panel, text = w.text, muted = w.muted),
+        ).also { it.dynamicStamp = WallpaperColours.stamp } else ResolvedPalette(p)
     }
 }

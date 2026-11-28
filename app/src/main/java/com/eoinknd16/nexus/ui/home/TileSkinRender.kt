@@ -63,6 +63,7 @@ import com.eoinknd16.nexus.look.SkinPattern
 import com.eoinknd16.nexus.look.SkinShadow
 import com.eoinknd16.nexus.look.SkinShape
 import com.eoinknd16.nexus.look.TileSkin
+import com.eoinknd16.nexus.look.family
 import com.eoinknd16.nexus.ui.fx.NeonClock
 import com.eoinknd16.nexus.ui.fx.Tilt
 import com.eoinknd16.nexus.ui.fx.holoPanel
@@ -399,6 +400,7 @@ fun skinFont(f: SkinFont): FontFamily? = when (f) {
     SkinFont.Serif -> FontFamily.Serif
     SkinFont.Mono -> FontFamily.Monospace
     SkinFont.Script -> FontFamily.Cursive
+    else -> runCatching { com.eoinknd16.nexus.look.FontChoice.valueOf(f.name).family() }.getOrNull()
 }
 
 fun skinCase(text: String, c: SkinCase) = when (c) {

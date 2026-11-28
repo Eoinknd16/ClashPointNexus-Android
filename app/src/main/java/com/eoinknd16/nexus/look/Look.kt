@@ -69,12 +69,17 @@ data class Palette(
     val muted: String = "#7A8FA6",
     /** 0..1 -- how see-through panels are over the backdrop. */
     val panelOpacity: Float = 0.8f,
+    /** Keep the accents matched to the phone's wallpaper colours (Android 12+), updating when it changes. */
+    val followWallpaper: Boolean = false,
 )
 
 @Serializable
 enum class FontChoice(val label: String) {
     Default("Default"), Light("Light"), Thin("Thin"), Medium("Medium"), Condensed("Condensed"),
     Serif("Serif"), Mono("Monospace"), Casual("Casual"), Cursive("Cursive"), SmallCaps("Small caps"),
+    // Bundled modern typefaces.
+    Inter("Inter"), Manrope("Manrope"), SpaceGrotesk("Space Grotesk"), Sora("Sora"), JetBrainsMono("JetBrains Mono"),
+    Outfit("Outfit"), Unbounded("Unbounded"), Syne("Syne"), Playfair("Playfair Display"),
 }
 
 @Serializable
@@ -120,6 +125,7 @@ data class ShapeStyle(
 @Serializable
 enum class BackdropStyle(val label: String) {
     Grid("Grid horizon"), Nebula("Nebula"), Stars("Starfield"), Waves("Waves"), Plain("Plain colour"),
+    Wallpaper("My phone wallpaper"),
 }
 
 @Serializable
@@ -133,6 +139,10 @@ data class Backdrop(
     val animated: Boolean = true,
     /** Backdrop frame rate cap; 0 = match the display (60/90/120/144Hz). */
     val fps: Int = 0,
+    /** "My phone wallpaper": how much it's darkened (0..0.9) so text stays readable. */
+    val wallpaperDim: Float = 0.3f,
+    /** "My phone wallpaper": blur radius in dp (Android 12+ phones that support window blur). */
+    val wallpaperBlur: Float = 0f,
 )
 
 @Serializable
@@ -402,6 +412,23 @@ sealed class HomeBlock {
         val pcLateNight: Boolean = true,
         val maxLines: Int = 3,
         val framed: Boolean = false,
+    ) : HomeBlock()
+
+    /** Live rings for the phone itself: battery, storage, memory, day/week progress, screen time. */
+    @Serializable
+    @SerialName("rings")
+    data class Rings(
+        override val id: String = newId(),
+        override val visible: Boolean = true,
+        override val pin: BlockPin = BlockPin.None,
+        override val locked: Boolean = false,
+        val rings: List<RingKind> = listOf(RingKind.Battery, RingKind.Storage, RingKind.Memory, RingKind.Day),
+        val style: RingStyle = RingStyle.Separate,
+        val sizeDp: Float = 74f,
+        val thickness: Float = 7f,
+        val showLabels: Boolean = true,
+        val glow: Boolean = true,
+        val framed: Boolean = true,
     ) : HomeBlock()
 
     /** Battery level as liquid in a glass that sloshes when you tilt or shake the phone. */
@@ -834,4 +861,17 @@ enum class LiquidFluid(val label: String, val viscosity: Float, val damping: Flo
     Syrup("Syrup", 0.0006f, 150f, 0.04f, 0.5f),
     Honey("Honey", 0.004f, 600f, 0.05f, 0.35f),
     Mercury("Mercury (heavy, metallic)", 0.000001f, 0.3f, 0.2f, -1.2f),
+}
+
+
+@Serializable
+enum class RingKind(val label: String, val short: String) {
+    Battery("Battery", "BATT"), Storage("Storage used", "DISK"), Memory("Memory in use", "RAM"),
+    Day("How far through the day", "DAY"), Week("How far through the week", "WEEK"), Month("How far through the month", "MONTH"),
+    Year("How far through the year", "YEAR"),
+}
+
+@Serializable
+enum class RingStyle(val label: String) {
+    Separate("Side by side"), Nested("Nested (Apple Watch style)"), Arcs("Gauges (270° arcs)"), Bars("Slim bars"),
 }

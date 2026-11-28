@@ -209,6 +209,7 @@ fun BlockContent(
         is HomeBlock.Spacer -> Spacer(Modifier.height(block.heightDp.dp))
         is HomeBlock.Glance -> GlanceView(block, vm)
         is HomeBlock.Liquid -> LiquidBattery(block)
+        is HomeBlock.Rings -> RingsView(block)
     }
 }
 

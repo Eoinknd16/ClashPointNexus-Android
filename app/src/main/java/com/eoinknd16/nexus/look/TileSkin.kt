@@ -44,7 +44,11 @@ enum class SkinIconStyle(val label: String) {
 enum class SkinIconPos(val label: String) { Auto("From the layout"), TopStart("Top left"), TopEnd("Top right"), Center("Centre"), BottomEnd("Bottom right") }
 
 @Serializable
-enum class SkinFont(val label: String) { Theme("Same as everywhere"), Sans("Sans"), Serif("Serif"), Mono("Monospace"), Script("Handwritten") }
+enum class SkinFont(val label: String) {
+    Theme("Same as everywhere"), Sans("Sans"), Serif("Serif"), Mono("Monospace"), Script("Handwritten"),
+    Inter("Inter"), Manrope("Manrope"), SpaceGrotesk("Space Grotesk"), Sora("Sora"), JetBrainsMono("JetBrains Mono"),
+    Outfit("Outfit"), Unbounded("Unbounded"), Syne("Syne"), Playfair("Playfair Display"),
+}
 
 @Serializable
 enum class SkinCase(val label: String) { AsTyped("As typed"), Upper("UPPERCASE"), Lower("lowercase") }

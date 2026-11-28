@@ -68,6 +68,35 @@ object ScreenTransitions {
 
 open class MainActivity : ComponentActivity() {
 
+    private fun applyWallpaperWindow(b: com.eoinknd16.nexus.look.Backdrop) {
+        val show = b.style == com.eoinknd16.nexus.look.BackdropStyle.Wallpaper
+        val lp = window.attributes
+        if (show) {
+            window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER)
+            window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
+        } else {
+            window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER)
+            window.setBackgroundDrawableResource(R.color.nexus_void)
+        }
+        if (android.os.Build.VERSION.SDK_INT >= 31) {
+            val px = if (show) (b.wallpaperBlur * resources.displayMetrics.density).toInt().coerceIn(0, 150) else 0
+            runCatching {
+                if (px > 0) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+                else window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+                lp.blurBehindRadius = px
+                window.attributes = lp
+            }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Wallpaper may have changed while we were away: re-read its colours.
+        com.eoinknd16.nexus.look.WallpaperColours.load(this)
+        com.eoinknd16.nexus.look.LookState.wallpaperChanged()
+    }
+
+
     /** Where the app opens: the home screen here, the TV section in the Fire TV build. */
     protected open val startRoute: String = Routes.HOME
 
@@ -82,6 +111,9 @@ open class MainActivity : ComponentActivity() {
         if (intent?.data?.let { it.scheme == "nexus" && it.host == "spotify" } == true) openSpotify.tryEmit(Unit)
         enableEdgeToEdge()
         setContent {
+            // "My phone wallpaper" backdrop: let the real wallpaper show through the window (optionally blurred).
+            val backdrop = com.eoinknd16.nexus.look.LookState.look.backdrop
+            androidx.compose.runtime.LaunchedEffect(backdrop.style, backdrop.wallpaperBlur) { applyWallpaperWindow(backdrop) }
             NexusTheme {
                 val nav = rememberNavController()
                 // nexus://spotify (the "Back to Nexus" link after Spotify sign-in).

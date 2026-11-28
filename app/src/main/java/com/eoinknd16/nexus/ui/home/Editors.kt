@@ -354,6 +354,17 @@ private fun BlockEditor(block: HomeBlock, onDismiss: () -> Unit, onEdit: (HomeEd
                 SliderRow("Most lines shown", block.maxLines.toFloat(), 1f..6f, { "${it.roundToInt()}" }) { set(block.copy(maxLines = it.roundToInt())) }
                 ToggleRow("Inside a panel", block.framed) { set(block.copy(framed = it)) }
             }
+            is HomeBlock.Rings -> {
+                ChoiceRow("Style", com.eoinknd16.nexus.look.RingStyle.entries, block.style, { it.label }) { set(block.copy(style = it)) }
+                com.eoinknd16.nexus.look.RingKind.entries.forEach { k ->
+                    ToggleRow(k.label, k in block.rings) { on -> set(block.copy(rings = if (on) (block.rings + k).distinct().sortedBy { it.ordinal } else block.rings - k)) }
+                }
+                SliderRow("Size", block.sizeDp, 44f..120f, { "${it.roundToInt()}dp" }) { set(block.copy(sizeDp = it)) }
+                SliderRow("Thickness", block.thickness, 2f..16f, { "${it.roundToInt()}dp" }) { set(block.copy(thickness = it)) }
+                ToggleRow("Labels", block.showLabels) { set(block.copy(showLabels = it)) }
+                ToggleRow("Glow", block.glow) { set(block.copy(glow = it)) }
+                ToggleRow("Inside a panel", block.framed) { set(block.copy(framed = it)) }
+            }
             is HomeBlock.Liquid -> {
                 SliderRow("Height", block.heightDp, 60f..260f, { "${it.roundToInt()}dp" }) { set(block.copy(heightDp = it)) }
                 ChoiceRow("Liquid", com.eoinknd16.nexus.look.LiquidFluid.entries, block.fluid, { it.label }) { set(block.copy(fluid = it)) }

@@ -168,6 +168,11 @@ half4 main(float2 fragCoord) {
 fun NexusBackdrop(modifier: Modifier = Modifier, intensity: Float = 1f, content: @Composable BoxScope.() -> Unit) {
     val b = LookState.look.backdrop
     val m = LookState.look.motion
+    if (b.style == BackdropStyle.Wallpaper) {
+        // The real wallpaper shows through the window (see MainActivity); just darken it a touch for readability.
+        Box(modifier.fillMaxSize().background(Color.Black.copy(alpha = (b.wallpaperDim * intensity.coerceIn(0.5f, 1.5f)).coerceIn(0f, 0.95f)))) { content() }
+        return
+    }
     Box(modifier.fillMaxSize().background(Nx.Void)) {
         if (b.style != BackdropStyle.Plain || b.scanlines) Box(
             // Deepest layer: drifts with the phone's tilt (see Tilt).

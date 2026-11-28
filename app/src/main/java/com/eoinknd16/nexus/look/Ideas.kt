@@ -100,6 +100,7 @@ val lookIdeas: List<LookIdea> = listOf(
         l.copy(
             presetName = "Glass daily",
             palette = l.palette.copy(
+                followWallpaper = false,
                 accent = "#7DD3FC", accent2 = "#A78BFA", warn = "#FBBF24", good = "#5DCAA5",
                 background = "#0A0E19", deep = "#05070F", text = "#F2F4F8", muted = "#9AA3B5",
             ),
@@ -133,6 +134,7 @@ val lookIdeas: List<LookIdea> = listOf(
         l.copy(
             presetName = "Mono pro",
             palette = l.palette.copy(
+                followWallpaper = false,
                 accent = "#C6F432", accent2 = "#C6F432", warn = "#C6F432", good = "#C6F432",
                 background = "#0C0C0C", deep = "#050505", text = "#EDEDED", muted = "#888780",
             ),
@@ -176,6 +178,7 @@ val lookIdeas: List<LookIdea> = listOf(
         l.copy(
             presetName = "Aurora media",
             palette = l.palette.copy(
+                followWallpaper = false,
                 accent = "#ED93B1", accent2 = "#AFA9EC", warn = "#FAC775", good = "#5DCAA5",
                 background = "#110816", deep = "#0A0410", panel = "#2A1636", text = "#F6EEF9", muted = "#B4A6C4", panelOpacity = 0.85f,
             ),
@@ -205,6 +208,7 @@ val lookIdeas: List<LookIdea> = listOf(
         l.copy(
             presetName = "App-colour bento",
             palette = l.palette.copy(
+                followWallpaper = false,
                 accent = "#185FA5", accent2 = "#D85A30", warn = "#EF9F27", good = "#1D9E75",
                 background = "#F1EFE8", deep = "#E6E3DA", panel = "#FFFFFF", text = "#2C2C2A", muted = "#5F5E5A", panelOpacity = 0.95f,
             ),
@@ -235,6 +239,7 @@ val lookIdeas: List<LookIdea> = listOf(
         l.copy(
             presetName = "Synthwave",
             palette = l.palette.copy(
+                followWallpaper = false,
                 accent = "#FF2A6D", accent2 = "#05D9E8", warn = "#F9C80E", good = "#01FF89",
                 background = "#0B0221", deep = "#05010F", panel = "#1A0B3A", text = "#FDF0FF", muted = "#A98CC9", panelOpacity = 0.7f,
             ),
@@ -266,6 +271,7 @@ val lookIdeas: List<LookIdea> = listOf(
         l.copy(
             presetName = "Paper",
             palette = l.palette.copy(
+                followWallpaper = false,
                 accent = "#E4572E", accent2 = "#2E86AB", warn = "#F2A541", good = "#3BB273",
                 background = "#FAF8F3", deep = "#F0ECE3", panel = "#FFFFFF", text = "#1E1D1A", muted = "#76716A", panelOpacity = 1f,
             ),
@@ -302,6 +308,7 @@ val lookIdeas: List<LookIdea> = listOf(
         l.copy(
             presetName = "Terminal",
             palette = l.palette.copy(
+                followWallpaper = false,
                 accent = "#33FF66", accent2 = "#33FF66", warn = "#E6FF33", good = "#33FF66",
                 background = "#020A04", deep = "#010502", panel = "#04140A", text = "#B8FFC8", muted = "#4C8F5D", panelOpacity = 0.9f,
             ),
@@ -323,6 +330,196 @@ val lookIdeas: List<LookIdea> = listOf(
                         tiles = folders.map { keep(it).copy(skin = null, border = null, folderTileStyle = FolderTileStyle.Physics) },
                     )
                 },
+            )
+        }
+    },
+
+    // ---- Device-native looks (your wallpaper, its colours, modern type, live rings) ----
+    LookIdea(
+        "Pixel You",
+        "Like a Pixel home screen but more: your own wallpaper behind everything, colours pulled from it (and following it when you change it), Outfit type, a huge thin clock, nested device rings, frosted squircle tiles and a folder whose icons fill it.",
+    ) { l ->
+        l.copy(
+            presetName = "Pixel You",
+            palette = l.palette.copy(followWallpaper = true, panelOpacity = 0.45f),
+            backdrop = l.backdrop.copy(style = BackdropStyle.Wallpaper, wallpaperDim = 0.25f, wallpaperBlur = 0f, scanlines = false, vignette = false),
+            fonts = l.fonts.copy(heading = FontChoice.Outfit, body = FontChoice.Outfit, label = FontChoice.Outfit, clock = FontChoice.Outfit, uppercaseLabels = false),
+            shape = l.shape.copy(corners = CornerStyle.Round, cornerSize = 26f, borderStyle = BorderStyle.None, brackets = false, glow = 0f),
+            home = l.home.copy(tileSkin = TileSkin(
+                preset = "Pixel You", fill = SkinFill.Glass, opacity = 0.75f, shape = SkinShape.Squircle, corner = 28f,
+                iconStyle = SkinIconStyle.Circle, font = SkinFont.Outfit, labelWeight = 600, shadow = SkinShadow.Soft, shadowSize = 10f, press = SkinPress.Squish,
+            )),
+        ).rebuild("Pixel You") { p, keep ->
+            listOfNotNull(
+                l.clockOr().copy(sizeSp = 88f, align = Align.Start, showDate = true, showWeather = true, showPcStatus = false, dateFormat = "EEEE, d MMMM"),
+                HomeBlock.Rings(style = RingStyle.Nested, rings = listOf(RingKind.Battery, RingKind.Day, RingKind.Storage), sizeDp = 64f, framed = true),
+                HomeBlock.Tiles(
+                    title = "", columns = 2, aspect = 1.6f, gapDp = 12f, iconSizeDp = 28f, paddingDp = 14f, showSublabels = false, tileLayout = TileLayout.Stack,
+                    tiles = listOfNotNull(
+                        keep(p.tv).copy(skin = null, border = null), keep(p.spotify).copy(skin = null, border = null),
+                        p.tools?.let { keep(it).copy(skin = null, border = null, colSpan = 2, folderTileStyle = FolderTileStyle.Fill) },
+                    ),
+                ),
+                l.searchOr(),
+            )
+        }
+    },
+    LookIdea(
+        "Frosted",
+        "One UI-style frosted glass: your wallpaper blurred behind the whole screen (Android 12+), Manrope type, soft white glass tiles, battery / storage / memory rings and a glance line.",
+    ) { l ->
+        l.copy(
+            presetName = "Frosted",
+            palette = l.palette.copy(followWallpaper = true, panelOpacity = 0.3f),
+            backdrop = l.backdrop.copy(style = BackdropStyle.Wallpaper, wallpaperDim = 0.15f, wallpaperBlur = 36f, scanlines = false, vignette = false),
+            fonts = l.fonts.copy(heading = FontChoice.Manrope, body = FontChoice.Manrope, label = FontChoice.Manrope, clock = FontChoice.Manrope, uppercaseLabels = false),
+            shape = l.shape.copy(corners = CornerStyle.Round, cornerSize = 24f, borderStyle = BorderStyle.Solid, borderWidth = 0.6f, borderColor = "#33FFFFFF", brackets = false, glow = 0f),
+            home = l.home.copy(tileSkin = TileSkin(
+                preset = "Frosted", fill = SkinFill.Glass, opacity = 0.55f, shape = SkinShape.Rounded, corner = 24f, shine = true, innerGlow = 0.35f,
+                iconStyle = SkinIconStyle.Squircle, font = SkinFont.Manrope, labelWeight = 600, tilt3d = true, press = SkinPress.Tilt,
+            )),
+        ).rebuild("Frosted") { p, keep ->
+            listOfNotNull(
+                l.clockOr().copy(sizeSp = 72f, align = Align.Center, showDate = true, showWeather = true, showPcStatus = false, dateFormat = "EEE d MMM"),
+                l.glanceOr(),
+                HomeBlock.Rings(style = RingStyle.Separate, rings = listOf(RingKind.Battery, RingKind.Storage, RingKind.Memory), sizeDp = 70f, thickness = 6f),
+                HomeBlock.Tiles(
+                    title = "", columns = 3, aspect = 1f, gapDp = 10f, iconSizeDp = 30f, paddingDp = 10f, showSublabels = false, tileLayout = TileLayout.Centered,
+                    tiles = listOfNotNull(
+                        keep(p.tv).copy(skin = null, border = null), keep(p.spotify).copy(skin = null, border = null), keep(p.pc).copy(skin = null, border = null),
+                        p.tools?.let { keep(it).copy(skin = null, border = null, colSpan = 2, folderTileStyle = FolderTileStyle.Physics) },
+                        p.social?.let { keep(it).copy(skin = null, border = null, folderTileStyle = FolderTileStyle.Fill) },
+                    ),
+                ),
+                l.askOr(),
+            )
+        }
+    },
+    LookIdea(
+        "Bento grotesk",
+        "A bold bento grid in Space Grotesk: a wide TV card, tall Spotify card, PC and folders in odd sizes, slim progress bars for the day, week and battery, on matte charcoal.",
+    ) { l ->
+        l.copy(
+            presetName = "Bento grotesk",
+            palette = l.palette.copy(
+                followWallpaper = false, accent = "#FF6B3D", accent2 = "#4D7CFF", warn = "#FFC83D", good = "#3DDC97",
+                background = "#111214", deep = "#0A0A0B", panel = "#1B1C20", text = "#F4F4F2", muted = "#8D8E93", panelOpacity = 1f,
+            ),
+            backdrop = l.backdrop.copy(style = BackdropStyle.Plain, scanlines = false, vignette = false),
+            fonts = l.fonts.copy(heading = FontChoice.SpaceGrotesk, body = FontChoice.SpaceGrotesk, label = FontChoice.SpaceGrotesk, clock = FontChoice.SpaceGrotesk, uppercaseLabels = false),
+            shape = l.shape.copy(corners = CornerStyle.Round, cornerSize = 22f, borderStyle = BorderStyle.None, brackets = false, glow = 0f),
+            home = l.home.copy(tileSkin = TileSkin(
+                preset = "Bento grotesk", fill = SkinFill.Solid, color1 = "#1B1C20", shape = SkinShape.Rounded, corner = 22f,
+                iconStyle = SkinIconStyle.Tinted, iconPos = SkinIconPos.TopStart, font = SkinFont.SpaceGrotesk, labelWeight = 700, labelScale = 1.1f, press = SkinPress.Sink,
+            )),
+        ).rebuild("Bento grotesk") { p, keep ->
+            listOfNotNull(
+                l.clockOr().copy(sizeSp = 70f, align = Align.Start, showDate = true, showWeather = true, showPcStatus = true, dateFormat = "EEE d MMM"),
+                HomeBlock.Tiles(
+                    title = "", columns = 3, aspect = 1f, gapDp = 8f, iconSizeDp = 26f, paddingDp = 14f, showSublabels = true, tileLayout = TileLayout.Stack,
+                    tiles = listOfNotNull(
+                        keep(p.tv).copy(skin = null, border = null, colSpan = 2, color = "accent"),
+                        keep(p.spotify).copy(skin = null, border = null, rowSpan = 2, color = "good"),
+                        keep(p.pc).copy(skin = null, border = null, color = "accent2"),
+                        p.tools?.let { keep(it).copy(skin = null, border = null, folderTileStyle = FolderTileStyle.Fill) },
+                        p.social?.let { keep(it).copy(skin = null, border = null, colSpan = 3, folderTileStyle = FolderTileStyle.Fill) },
+                    ),
+                ),
+                HomeBlock.Rings(style = RingStyle.Bars, rings = listOf(RingKind.Day, RingKind.Week, RingKind.Battery), thickness = 8f, framed = true),
+                l.searchOr(),
+            )
+        }
+    },
+    LookIdea(
+        "Instrument panel",
+        "A cockpit dashboard: JetBrains Mono, carbon-fibre tiles, 270° gauges for battery, storage, memory and the day, a command bar and folders that rattle about, on a slow grid horizon.",
+    ) { l ->
+        l.copy(
+            presetName = "Instrument panel",
+            palette = l.palette.copy(
+                followWallpaper = false, accent = "#FFB020", accent2 = "#40E0FF", warn = "#FFB020", good = "#7CFF6B",
+                background = "#07090C", deep = "#030405", panel = "#0F1318", text = "#E8ECEF", muted = "#6C7682", panelOpacity = 0.92f,
+            ),
+            backdrop = l.backdrop.copy(style = BackdropStyle.Grid, intensity = 0.55f, speed = 0.4f, scanlines = false, vignette = true),
+            fonts = l.fonts.copy(heading = FontChoice.JetBrainsMono, body = FontChoice.Inter, label = FontChoice.JetBrainsMono, clock = FontChoice.JetBrainsMono, uppercaseLabels = true),
+            shape = l.shape.copy(corners = CornerStyle.Cut, cornerSize = 10f, borderStyle = BorderStyle.Solid, borderWidth = 0.8f, borderColor = "accent", brackets = true, glow = 0.2f),
+            home = l.home.copy(tileSkin = tileSkinPresets.first { it.first == "Carbon" }.second.copy(preset = "Instrument panel", font = SkinFont.JetBrainsMono, case = SkinCase.Upper, letterSpacing = 1.5f)),
+        ).rebuild("Instrument panel") { p, keep ->
+            listOfNotNull(
+                l.clockOr().copy(sizeSp = 58f, align = Align.Start, showDate = true, showWeather = true, showPcStatus = true, dateFormat = "EEE dd.MM"),
+                HomeBlock.Rings(style = RingStyle.Arcs, rings = listOf(RingKind.Battery, RingKind.Storage, RingKind.Memory, RingKind.Day), sizeDp = 70f, thickness = 6f),
+                l.askOr().copy(placeholder = "> command"),
+                HomeBlock.Tiles(
+                    title = "", columns = 3, aspect = 1.1f, gapDp = 8f, iconSizeDp = 22f, paddingDp = 10f, showSublabels = true,
+                    tiles = listOfNotNull(
+                        keep(p.tv).copy(skin = null, border = null), keep(p.spotify).copy(skin = null, border = null), keep(p.pc).copy(skin = null, border = null),
+                        p.tools?.let { keep(it).copy(skin = null, border = null, colSpan = 3, folderTileStyle = FolderTileStyle.Physics) },
+                    ),
+                ),
+            )
+        }
+    },
+    LookIdea(
+        "Editorial",
+        "Magazine-style: a Playfair Display clock and headings, Inter text, warm ink-black with cream type and a single red accent, hairline tiles with no icons' badges, posters picked for you and a quiet year-progress bar.",
+    ) { l ->
+        val hair = BorderOverride(style = BorderStyle.Solid, width = 0.5f, color = "#3A3630")
+        l.copy(
+            presetName = "Editorial",
+            palette = l.palette.copy(
+                followWallpaper = false, accent = "#E5484D", accent2 = "#E5484D", warn = "#D6A35C", good = "#9DB89A",
+                background = "#14120F", deep = "#0C0B09", panel = "#1A1814", text = "#F3EBDD", muted = "#9A9285", panelOpacity = 1f,
+            ),
+            backdrop = l.backdrop.copy(style = BackdropStyle.Plain, scanlines = false, vignette = false),
+            fonts = l.fonts.copy(heading = FontChoice.Playfair, body = FontChoice.Inter, label = FontChoice.Inter, clock = FontChoice.Playfair, uppercaseLabels = true),
+            shape = l.shape.copy(corners = CornerStyle.Square, cornerSize = 0f, borderStyle = BorderStyle.Solid, borderWidth = 0.5f, borderColor = "#3A3630", brackets = false, glow = 0f),
+            home = l.home.copy(tileSkin = TileSkin(
+                preset = "Editorial", fill = SkinFill.None, shape = SkinShape.Square, corner = 0f, iconStyle = SkinIconStyle.Mono,
+                iconPos = SkinIconPos.TopEnd, font = SkinFont.Playfair, labelWeight = 600, labelScale = 1.2f, subColor = "accent", press = SkinPress.Sink,
+            )),
+        ).rebuild("Editorial") { p, keep ->
+            listOfNotNull(
+                l.clockOr().copy(sizeSp = 80f, align = Align.Start, showDate = true, showWeather = true, showPcStatus = false, dateFormat = "EEEE d MMMM"),
+                HomeBlock.Rings(style = RingStyle.Bars, rings = listOf(RingKind.Year), thickness = 3f, glow = false, framed = false),
+                HomeBlock.Posters(title = "Picked for you", source = PosterSource.ForYou),
+                HomeBlock.Tiles(
+                    title = "", columns = 2, aspect = 2.2f, gapDp = 0f, iconSizeDp = 20f, paddingDp = 14f, showSublabels = true, tileLayout = TileLayout.Stack,
+                    tiles = listOfNotNull(
+                        keep(p.tv).copy(skin = null, border = hair), keep(p.spotify).copy(skin = null, border = hair), keep(p.pc).copy(skin = null, border = hair),
+                        p.tools?.let { keep(it).copy(skin = null, border = hair, folderTileStyle = FolderTileStyle.Fill) },
+                    ),
+                ),
+                l.searchOr(),
+            )
+        }
+    },
+    LookIdea(
+        "Unbounded night",
+        "Big, wide Unbounded type over a slow nebula, aurora mesh tiles that tip in 3D as you tilt the phone, glowing rings and an orbit-ring folder.",
+    ) { l ->
+        l.copy(
+            presetName = "Unbounded night",
+            palette = l.palette.copy(
+                followWallpaper = false, accent = "#8B5CFF", accent2 = "#FF5CC8", warn = "#FFB547", good = "#3DFFC5",
+                background = "#07061A", deep = "#030210", panel = "#120F2E", text = "#F5F3FF", muted = "#9C97C9", panelOpacity = 0.6f,
+            ),
+            backdrop = l.backdrop.copy(style = BackdropStyle.Nebula, intensity = 0.9f, speed = 0.6f, scanlines = false, vignette = true),
+            fonts = l.fonts.copy(heading = FontChoice.Unbounded, body = FontChoice.Sora, label = FontChoice.Sora, clock = FontChoice.Unbounded, uppercaseLabels = true),
+            shape = l.shape.copy(corners = CornerStyle.Round, cornerSize = 26f, borderStyle = BorderStyle.Gradient, brackets = false, glow = 0.4f),
+            home = l.home.copy(tileSkin = tileSkinPresets.first { it.first == "Aurora" }.second.copy(preset = "Unbounded night", font = SkinFont.Unbounded, tilt3d = true, shape = SkinShape.Squircle, corner = 30f)),
+        ).rebuild("Unbounded night") { p, keep ->
+            listOfNotNull(
+                l.clockOr().copy(sizeSp = 64f, align = Align.Center, showDate = true, showWeather = true, showPcStatus = false, dateFormat = "EEE d MMM"),
+                HomeBlock.Rings(style = RingStyle.Separate, rings = listOf(RingKind.Battery, RingKind.Day, RingKind.Week), sizeDp = 68f, glow = true, framed = false),
+                HomeBlock.Tiles(
+                    title = "", columns = 2, aspect = 1.25f, gapDp = 12f, iconSizeDp = 30f, paddingDp = 14f, showSublabels = false,
+                    tiles = listOfNotNull(
+                        keep(p.tv).copy(skin = null, border = null), keep(p.spotify).copy(skin = null, border = null),
+                        keep(p.pc).copy(skin = null, border = null),
+                        p.tools?.let { keep(it).copy(skin = null, border = null, folderTileStyle = FolderTileStyle.Physics, folderStyle = FolderStyle.Ring, folderRingSize = 0f) },
+                    ),
+                ),
+                l.askOr(),
             )
         }
     },
