@@ -523,4 +523,95 @@ val lookIdeas: List<LookIdea> = listOf(
             )
         }
     },
+
+    // ---- Layout templates built on the newer blocks and block styles ----
+    LookIdea(
+        "Daily planner",
+        "Your day at a glance: clock, quick toggles, the next few calendar events as a timeline, a sticky note, a countdown and your tiles as a sideways carousel. Every block sits on its own glass card.",
+    ) { l ->
+        val toggles = HomeBlock.Toggles(style = ToggleStyle.Circles, sizeDp = 48f)
+        val agenda = HomeBlock.Agenda(style = AgendaStyle.Timeline, days = 3, maxItems = 4, framed = false)
+        val note = HomeBlock.Note(text = "Tap to write today's focus", framed = false)
+        val count = HomeBlock.Countdown(title = "Christmas", target = "2026-12-25 00:00", style = CountdownStyle.Compact, framed = false, startedAt = System.currentTimeMillis())
+        val glass = blockStylePresets.first { it.first == "Glass" }.second
+        l.copy(
+            presetName = "Daily planner",
+            fonts = l.fonts.copy(heading = FontChoice.Inter, body = FontChoice.Inter, label = FontChoice.Inter, clock = FontChoice.Inter, uppercaseLabels = false),
+        ).rebuild("Daily planner") { p, keep ->
+            listOfNotNull(
+                l.clockOr().copy(sizeSp = 60f, align = Align.Start, showDate = true, showWeather = true, showPcStatus = false, dateFormat = "EEEE d MMM"),
+                toggles, agenda, note, count,
+                HomeBlock.Tiles(
+                    title = "", columns = 3, aspect = 1f, gapDp = 10f, iconSizeDp = 28f, paddingDp = 12f, showSublabels = false, arrange = TilesArrange.Carousel,
+                    tiles = listOfNotNull(keep(p.tv), keep(p.spotify), keep(p.pc), p.tools?.let { keep(it).copy(folderTileStyle = FolderTileStyle.Fill) }, p.social?.let { keep(it).copy(folderTileStyle = FolderTileStyle.Fill) }).map { it.copy(skin = null, border = null) },
+                ),
+            )
+        }.let { r -> r.copy(home = r.home.copy(blockStyles = r.home.blockStyles + listOf(toggles.id, agenda.id, note.id, count.id).associateWith { glass })) }
+    },
+    LookIdea(
+        "Control centre",
+        "Like the phone's quick settings, on your home screen: big square toggles, gauges for battery, storage and memory, a hero TV tile with the rest in a mosaic, all on soft cards.",
+    ) { l ->
+        val toggles = HomeBlock.Toggles(style = ToggleStyle.Squares, sizeDp = 58f, items = listOf(ToggleKind.Torch, ToggleKind.Wifi, ToggleKind.Bluetooth, ToggleKind.Dnd, ToggleKind.Silent, ToggleKind.Volume, ToggleKind.Brightness, ToggleKind.Camera))
+        val rings = HomeBlock.Rings(style = RingStyle.Arcs, rings = listOf(RingKind.Battery, RingKind.Storage, RingKind.Memory), framed = false)
+        val card = blockStylePresets.first { it.first == "Card" }.second
+        l.copy(presetName = "Control centre").rebuild("Control centre") { p, keep ->
+            listOfNotNull(
+                l.clockOr().copy(sizeSp = 52f, align = Align.Start, showDate = true, showWeather = true, dateFormat = "EEE d MMM"),
+                toggles, rings,
+                HomeBlock.Tiles(
+                    title = "", columns = 3, aspect = 1f, gapDp = 10f, iconSizeDp = 28f, paddingDp = 12f, showSublabels = true, arrange = TilesArrange.Hero,
+                    tiles = listOfNotNull(keep(p.tv), keep(p.spotify), keep(p.pc), p.tools?.let { keep(it).copy(folderTileStyle = FolderTileStyle.Fill) }).map { it.copy(skin = null, border = null) },
+                ),
+                l.searchOr(),
+            )
+        }.let { r -> r.copy(home = r.home.copy(blockStyles = r.home.blockStyles + listOf(toggles.id, rings.id).associateWith { card })) }
+    },
+    LookIdea(
+        "Photo frame",
+        "A big photo of your choice that slowly drifts, a light clock under it, a slim year bar, your tiles in a staggered grid and a frosted search bar. Tap the photo spot to pick one.",
+    ) { l ->
+        val photo = HomeBlock.Photo(heightDp = 260f, caption = "", drift = true, fade = true)
+        val search = l.searchOr()
+        l.copy(
+            presetName = "Photo frame",
+            fonts = l.fonts.copy(clock = FontChoice.Manrope, heading = FontChoice.Manrope, body = FontChoice.Manrope, uppercaseLabels = false),
+        ).rebuild("Photo frame") { p, keep ->
+            listOfNotNull(
+                photo,
+                l.clockOr().copy(sizeSp = 56f, align = Align.Start, showDate = true, showWeather = true, dateFormat = "EEE d MMM"),
+                HomeBlock.Rings(style = RingStyle.Bars, rings = listOf(RingKind.Year), thickness = 3f, glow = false, framed = false),
+                HomeBlock.Tiles(
+                    title = "", columns = 2, aspect = 1.4f, gapDp = 10f, iconSizeDp = 26f, paddingDp = 12f, showSublabels = false, arrange = TilesArrange.Staggered,
+                    tiles = listOfNotNull(keep(p.tv), keep(p.spotify), keep(p.pc), p.tools?.let { keep(it).copy(folderTileStyle = FolderTileStyle.Fill) }).map { it.copy(skin = null, border = null) },
+                ),
+                search,
+            )
+        }.let { r -> r.copy(home = r.home.copy(blockStyles = r.home.blockStyles + (search.id to blockStylePresets.first { it.first == "Glass" }.second))) }
+    },
+    LookIdea(
+        "Sticker board",
+        "Playful collage: paper-style tiles with hard shadows, a handwritten note and a countdown stuck on at slight angles, Syne type and warm colours.",
+    ) { l ->
+        val note = HomeBlock.Note(text = "don't forget!", handwritten = true, sizeSp = 22f, framed = false)
+        val count = HomeBlock.Countdown(title = "Christmas", style = CountdownStyle.Big, framed = false, startedAt = System.currentTimeMillis())
+        val sticker = blockStylePresets.first { it.first == "Sticker" }.second
+        l.copy(
+            presetName = "Sticker board",
+            palette = l.palette.copy(followWallpaper = false, accent = "#E5484D", accent2 = "#3E63DD", warn = "#F5A524", good = "#30A46C",
+                background = "#22201C", deep = "#161512", panel = "#2C2A25", text = "#F3EBDD", muted = "#A39E93", panelOpacity = 1f),
+            backdrop = l.backdrop.copy(style = BackdropStyle.Plain, scanlines = false, vignette = false),
+            fonts = l.fonts.copy(heading = FontChoice.Syne, body = FontChoice.Inter, label = FontChoice.Syne, clock = FontChoice.Syne, uppercaseLabels = false),
+            home = l.home.copy(tileSkin = tileSkinPresets.first { it.first == "Paper" }.second),
+        ).rebuild("Sticker board") { p, keep ->
+            listOfNotNull(
+                l.clockOr().copy(sizeSp = 64f, align = Align.Start, showDate = true, showWeather = true, dateFormat = "EEE d MMM"),
+                note, count,
+                HomeBlock.Tiles(
+                    title = "", columns = 2, aspect = 1.3f, gapDp = 14f, iconSizeDp = 26f, paddingDp = 12f, showSublabels = false, arrange = TilesArrange.Mosaic,
+                    tiles = listOfNotNull(keep(p.tv), keep(p.spotify), keep(p.pc), p.tools?.let { keep(it).copy(folderTileStyle = FolderTileStyle.Physics) }, p.social?.let { keep(it).copy(folderTileStyle = FolderTileStyle.Fill) }).map { it.copy(skin = null, border = null) },
+                ),
+            )
+        }.let { r -> r.copy(home = r.home.copy(blockStyles = r.home.blockStyles + (note.id to sticker) + (count.id to sticker.copy(rotate = 1.5f, color1 = "#FFE9A8")))) }
+    },
 )
