@@ -73,6 +73,10 @@ class ResolvedPalette(p: Palette) {
         "danger" -> danger
         "muted" -> muted
         "text" -> text
+        "panel" -> panelSolid
+        "deep" -> deep
+        "background" -> background
+        "line" -> accent.copy(alpha = 0.2f)
         else -> parseColor(name, accent)
     }
 }

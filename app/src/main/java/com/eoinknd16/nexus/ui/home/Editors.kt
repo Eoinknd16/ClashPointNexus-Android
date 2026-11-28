@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import com.eoinknd16.nexus.ui.settings.Hint
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 
 import com.eoinknd16.nexus.look.allBlocks
 
@@ -219,12 +220,15 @@ private fun BlockEditor(block: HomeBlock, onDismiss: () -> Unit, onEdit: (HomeEd
                     .border(1.dp, Nx.CyanDim, nexusShape()).padding(12.dp),
             ) {
                 SizedBlock(LookState.look.home.blockSizes[block.id]) {
-                    BlockContent(block, vm, runner, editMode = false, onOpenFolder = { _, _ -> }, onEditTile = {}, onAddTile = {})
+                    StyledBlock(LookState.look.home.blockStyles[block.id]) {
+                        BlockContent(block, vm, runner, editMode = false, onOpenFolder = { _, _ -> }, onEditTile = {}, onAddTile = {})
+                    }
                 }
             }
             Spacer(Modifier.height(14.dp))
         }
         BlockSizeSection(block.id)
+        BlockStyleSection(block.id)
         when (block) {
             is HomeBlock.Clock -> {
                 ToggleRow("24-hour", block.use24h) { set(block.copy(use24h = it)) }
@@ -262,6 +266,13 @@ private fun BlockEditor(block: HomeBlock, onDismiss: () -> Unit, onEdit: (HomeEd
             }
             is HomeBlock.Tiles -> {
                 TextRow("Heading", block.title) { set(block.copy(title = it)) }
+                ChoiceRow("Arrangement", com.eoinknd16.nexus.look.TilesArrange.entries, block.arrange, { it.label }, subtitle = when (block.arrange) {
+                    com.eoinknd16.nexus.look.TilesArrange.Carousel -> "Swipe sideways; Columns = how many fit across"
+                    com.eoinknd16.nexus.look.TilesArrange.Hero -> "The first tile spans the full width, two rows tall"
+                    com.eoinknd16.nexus.look.TilesArrange.Staggered -> "Every third tile is tall, for a masonry feel"
+                    com.eoinknd16.nexus.look.TilesArrange.Mosaic -> "A repeating mix of big, wide, tall and small tiles"
+                    else -> null
+                }) { set(block.copy(arrange = it)) }
                 SliderRow("Columns", block.columns.toFloat(), 1f..6f, { it.roundToInt().toString() }, steps = 4) { set(block.copy(columns = it.roundToInt())) }
                 SliderRow("Tile shape (width ÷ height)", block.aspect, 0.5f..3f, { "%.2f".format(it) }) { set(block.copy(aspect = it)) }
                 ToggleRow("Show sub-labels", block.showSublabels) { set(block.copy(showSublabels = it)) }
@@ -353,6 +364,47 @@ private fun BlockEditor(block: HomeBlock, onDismiss: () -> Unit, onEdit: (HomeEd
                 ToggleRow("PC still on (late at night)", block.pcLateNight) { set(block.copy(pcLateNight = it)) }
                 SliderRow("Most lines shown", block.maxLines.toFloat(), 1f..6f, { "${it.roundToInt()}" }) { set(block.copy(maxLines = it.roundToInt())) }
                 ToggleRow("Inside a panel", block.framed) { set(block.copy(framed = it)) }
+            }
+            is HomeBlock.Toggles -> {
+                ChoiceRow("Style", com.eoinknd16.nexus.look.ToggleStyle.entries, block.style, { it.label }) { set(block.copy(style = it)) }
+                com.eoinknd16.nexus.look.ToggleKind.entries.forEach { k ->
+                    ToggleRow(k.label, k in block.items) { on -> set(block.copy(items = if (on) (block.items + k).distinct() else block.items - k)) }
+                }
+                SliderRow("Size", block.sizeDp, 32f..90f, { "${it.roundToInt()}dp" }) { set(block.copy(sizeDp = it)) }
+                ToggleRow("Labels", block.showLabels) { set(block.copy(showLabels = it)) }
+                ToggleRow("Inside a panel", block.framed) { set(block.copy(framed = it)) }
+                Text("Android only lets apps switch the torch, Do Not Disturb and ring mode directly; the others open the phone's own quick panel for that setting.", style = MaterialTheme.typography.labelSmall, color = Nx.Muted)
+            }
+            is HomeBlock.Agenda -> {
+                TextRow("Heading", block.title) { set(block.copy(title = it)) }
+                ChoiceRow("Style", com.eoinknd16.nexus.look.AgendaStyle.entries, block.style, { it.label }) { set(block.copy(style = it)) }
+                SliderRow("Days ahead", block.days.toFloat(), 1f..14f, { "${it.roundToInt()}" }) { set(block.copy(days = it.roundToInt())) }
+                SliderRow("Most events", block.maxItems.toFloat(), 1f..10f, { "${it.roundToInt()}" }) { set(block.copy(maxItems = it.roundToInt())) }
+                ToggleRow("Inside a panel", block.framed) { set(block.copy(framed = it)) }
+            }
+            is HomeBlock.Note -> {
+                TextRow("Text", block.text, "Anything you want to see every time", singleLine = false) { set(block.copy(text = it)) }
+                SliderRow("Text size", block.sizeSp, 11f..40f, { "${it.roundToInt()}sp" }) { set(block.copy(sizeSp = it)) }
+                ChoiceRow("Alignment", Align.entries, block.align, { it.name }) { set(block.copy(align = it)) }
+                ToggleRow("Handwritten", block.handwritten) { set(block.copy(handwritten = it)) }
+                ToggleRow("Inside a panel", block.framed) { set(block.copy(framed = it)) }
+            }
+            is HomeBlock.Countdown -> {
+                TextRow("What for", block.title) { set(block.copy(title = it)) }
+                TextRow("When (yyyy-MM-dd HH:mm)", block.target, "2026-12-25 00:00") { set(block.copy(target = it, startedAt = if (block.startedAt == 0L) System.currentTimeMillis() else block.startedAt)) }
+                if (parseCountdown(block.target) == null) Text("That date doesn't look right: use e.g. 2026-12-25 18:30", color = Nx.Danger, style = MaterialTheme.typography.labelSmall)
+                ChoiceRow("Style", com.eoinknd16.nexus.look.CountdownStyle.entries, block.style, { it.label }) { set(block.copy(style = it)) }
+                ToggleRow("Progress bar", block.showProgress) { set(block.copy(showProgress = it)) }
+                NexusButton("Restart the progress from now", accent = Nx.Muted) { set(block.copy(startedAt = System.currentTimeMillis())) }
+                ToggleRow("Inside a panel", block.framed) { set(block.copy(framed = it)) }
+            }
+            is HomeBlock.Photo -> {
+                SliderRow("Height", block.heightDp, 60f..500f, { "${it.roundToInt()}dp" }) { set(block.copy(heightDp = it)) }
+                TextRow("Caption", block.caption) { set(block.copy(caption = it)) }
+                ToggleRow("Slow drift (Ken Burns)", block.drift) { set(block.copy(drift = it)) }
+                ToggleRow("Fade at the bottom", block.fade) { set(block.copy(fade = it)) }
+                SliderRow("Darken", block.dim, 0f..0.9f, { "${(it * 100).roundToInt()}%" }) { set(block.copy(dim = it)) }
+                NexusButton("Choose a different photo", accent = Nx.Muted) { set(block.copy(uri = "")) }
             }
             is HomeBlock.Rings -> {
                 ChoiceRow("Style", com.eoinknd16.nexus.look.RingStyle.entries, block.style, { it.label }) { set(block.copy(style = it)) }
@@ -910,6 +962,58 @@ private fun PagesEditor(onDismiss: () -> Unit) {
     }
 }
 
+
+/** Background / corners / border / glow for any block. */
+@Composable
+private fun BlockStyleSection(blockId: String) {
+    val c = appContainer()
+    val st = LookState.look.home.blockStyles[blockId] ?: com.eoinknd16.nexus.look.BlockStyle()
+    fun set(v: com.eoinknd16.nexus.look.BlockStyle) = c.editLook { l ->
+        l.copy(home = l.home.copy(blockStyles = if (v == com.eoinknd16.nexus.look.BlockStyle()) l.home.blockStyles - blockId else l.home.blockStyles + (blockId to v)))
+    }
+    com.eoinknd16.nexus.ui.settings.Section("Block style", if (st.preset.isNotBlank()) st.preset else if (st == com.eoinknd16.nexus.look.BlockStyle()) "As it is" else "Custom") {
+        ChoiceRow("Preset", com.eoinknd16.nexus.look.blockStylePresets.map { it.first }, st.preset.ifBlank { "As it is" }, { it }) { name ->
+            set(com.eoinknd16.nexus.look.blockStylePresets.first { it.first == name }.second)
+        }
+        ChoiceRow("Background", com.eoinknd16.nexus.look.BlockBg.entries, st.bg, { it.label }) { set(st.copy(bg = it)) }
+        if (st.bg == com.eoinknd16.nexus.look.BlockBg.Solid || st.bg == com.eoinknd16.nexus.look.BlockBg.Gradient || st.bg == com.eoinknd16.nexus.look.BlockBg.Mesh) {
+            com.eoinknd16.nexus.ui.settings.ColorRow("Colour", slotHex(st.color1), allowAlpha = true) { set(st.copy(color1 = it)) }
+            if (st.bg != com.eoinknd16.nexus.look.BlockBg.Solid) com.eoinknd16.nexus.ui.settings.ColorRow("Second colour", slotHex(st.color2), allowAlpha = true) { set(st.copy(color2 = it)) }
+            if (st.bg == com.eoinknd16.nexus.look.BlockBg.Gradient) SliderRow("Gradient angle", st.angle, 0f..360f, { "${it.roundToInt()}°" }) { set(st.copy(angle = it)) }
+        }
+        if (st.bg != com.eoinknd16.nexus.look.BlockBg.None) SliderRow("Background strength", st.opacity, 0f..1f, { "${(it * 100).roundToInt()}%" }) { set(st.copy(opacity = it)) }
+        SliderRow("Corners", st.corner, -1f..48f, { if (it < 0f) "Same as everywhere" else "${it.roundToInt()}dp" }) { set(st.copy(corner = if (it < 0f) -1f else it)) }
+        SliderRow("Inner padding", st.padding, 0f..40f, { "${it.roundToInt()}dp" }) { set(st.copy(padding = it)) }
+        SliderRow("Space above", st.marginTop, 0f..60f, { "${it.roundToInt()}dp" }) { set(st.copy(marginTop = it)) }
+        SliderRow("Space below", st.marginBottom, 0f..60f, { "${it.roundToInt()}dp" }) { set(st.copy(marginBottom = it)) }
+        SliderRow("Border", st.borderWidth, 0f..4f, { if (it < 0.1f) "None" else "%.1fdp".format(it) }) { set(st.copy(borderWidth = if (it < 0.1f) 0f else it)) }
+        if (st.borderWidth > 0f) {
+            ToggleRow("Gradient border", st.borderGradient) { set(st.copy(borderGradient = it)) }
+            if (!st.borderGradient) com.eoinknd16.nexus.ui.settings.ColorRow("Border colour", slotHex(st.borderColor), allowAlpha = true) { set(st.copy(borderColor = it)) }
+        }
+        SliderRow("Coloured glow", st.glow, 0f..40f, { if (it < 1f) "Off" else "${it.roundToInt()}dp" }) { set(st.copy(glow = it)) }
+        if (st.glow >= 1f) com.eoinknd16.nexus.ui.settings.ColorRow("Glow colour", slotHex(st.glowColor)) { set(st.copy(glowColor = it)) }
+        else SliderRow("Shadow", st.shadow, 0f..40f, { if (it < 1f) "Off" else "${it.roundToInt()}dp" }) { set(st.copy(shadow = it)) }
+        ToggleRow("Glossy shine", st.shine) { set(st.copy(shine = it)) }
+        ToggleRow("Tips in 3D as you tilt", st.tilt3d) { set(st.copy(tilt3d = it)) }
+        SliderRow("Tilt (sticker look)", st.rotate, -8f..8f, { "%.1f°".format(it) }) { set(st.copy(rotate = it)) }
+        SliderRow("See-through", st.alpha, 0.1f..1f, { "${(it * 100).roundToInt()}%" }) { set(st.copy(alpha = it)) }
+        if (st != com.eoinknd16.nexus.look.BlockStyle()) NexusButton("Reset style", accent = Nx.Muted) { set(com.eoinknd16.nexus.look.BlockStyle()) }
+        ToggleRow("Use this style on every block", false, "Copies it to all blocks on this page") { on ->
+            if (on) c.editLook("Style copied to every block") { l ->
+                val ids = (l.home.blocks + l.home.pages.flatMap { it.blocks }).filter { it !is HomeBlock.Spacer }.map { it.id }
+                l.copy(home = l.home.copy(blockStyles = l.home.blockStyles + ids.associateWith { st }))
+            }
+        }
+    }
+    Spacer(Modifier.height(4.dp))
+}
+
+/** ColorRow wants a #hex; palette slot names become their current colour. */
+private fun slotHex(v: String): String = if (v.startsWith("#")) v else {
+    val col = LookState.palette.slot(v)
+    String.format("#%08X", col.toArgb())
+}
 
 /** Width / alignment / scale for any block. */
 @Composable

@@ -138,5 +138,10 @@ val addableBlocks: List<Pair<String, () -> HomeBlock>> = listOf(
     "At a glance" to { HomeBlock.Glance() },
     "Liquid battery (sloshes when you tilt)" to { HomeBlock.Liquid() },
     "Device rings (battery, storage, memory, day)" to { HomeBlock.Rings() },
+    "Quick toggles (torch, Wi-Fi, Do Not Disturb…)" to { HomeBlock.Toggles() },
+    "Calendar (your next events)" to { HomeBlock.Agenda() },
+    "Note" to { HomeBlock.Note() },
+    "Countdown" to { HomeBlock.Countdown(startedAt = System.currentTimeMillis()) },
+    "Photo" to { HomeBlock.Photo() },
     "Picked for you (what to watch)" to { HomeBlock.Posters(title = "Picked for you", source = PosterSource.ForYou) },
 )

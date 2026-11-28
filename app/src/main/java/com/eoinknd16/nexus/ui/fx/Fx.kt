@@ -216,7 +216,7 @@ object Tilt {
 fun TiltSensor() {
     val m = LookState.look.motion
     val look = LookState.look
-    val tiltTiles = look.home.tileSkin.tilt3d ||
+    val tiltTiles = look.home.tileSkin.tilt3d || look.home.blockStyles.values.any { it.tilt3d } ||
         (look.home.blocks + look.home.pages.flatMap { it.blocks }).any { b -> b is com.eoinknd16.nexus.look.HomeBlock.Tiles && b.tiles.any { it.skin?.tilt3d == true } }
     if (!m.parallax && !m.sheen && !tiltTiles) return
     val context = androidx.compose.ui.platform.LocalContext.current

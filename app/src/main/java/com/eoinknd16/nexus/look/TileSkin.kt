@@ -185,4 +185,46 @@ val tileSkinPresets: List<Pair<String, TileSkin>> = listOf(
         preset = "Rainbow", fill = SkinFill.Solid, color1 = "#0A0A0F", shape = SkinShape.Rounded, corner = 20f, anim = SkinAnim.Rainbow,
         shadow = SkinShadow.Glow, shadowSize = 10f, iconStyle = SkinIconStyle.Plain,
     ),
+    "Pastel" to TileSkin(
+        preset = "Pastel", fill = SkinFill.Gradient, color1 = "#FBC2EB", color2 = "#A6C1EE", angle = 120f, shape = SkinShape.Squircle, corner = 26f,
+        iconStyle = SkinIconStyle.Circle, labelColor = "#1E1B2E", subColor = "#4A4560", font = SkinFont.Outfit, labelWeight = 700, shadow = SkinShadow.Soft, press = SkinPress.Pop,
+    ),
+    "Sunset" to TileSkin(
+        preset = "Sunset", fill = SkinFill.Gradient, color1 = "#FF5F6D", color2 = "#FFC371", angle = 160f, shape = SkinShape.Rounded, corner = 22f,
+        shine = true, iconStyle = SkinIconStyle.Mono, labelColor = "#FFFFFF", font = SkinFont.Sora, labelWeight = 800, shadow = SkinShadow.Floating, shadowColor = "#FF5F6D",
+    ),
+    "Midnight" to TileSkin(
+        preset = "Midnight", fill = SkinFill.Gradient, color1 = "#141E30", color2 = "#243B55", angle = 180f, shape = SkinShape.Rounded, corner = 20f,
+        innerGlow = 0.3f, iconStyle = SkinIconStyle.Glow, font = SkinFont.Inter, labelWeight = 600, anim = SkinAnim.Breathe, animSpeed = 0.5f,
+    ),
+    "Frost" to TileSkin(
+        preset = "Frost", fill = SkinFill.Glass, opacity = 0.5f, shape = SkinShape.Squircle, corner = 30f, shine = true, innerGlow = 0.5f,
+        pattern = SkinPattern.Grain, patternOpacity = 0.05f, iconStyle = SkinIconStyle.Squircle, font = SkinFont.Manrope, tilt3d = true, press = SkinPress.Tilt,
+    ),
+    "Paper" to TileSkin(
+        preset = "Paper", fill = SkinFill.Solid, color1 = "#F3EBDD", shape = SkinShape.Rounded, corner = 6f, pattern = SkinPattern.Grain, patternOpacity = 0.1f,
+        shadow = SkinShadow.Hard, shadowSize = 4f, shadowColor = "#000000", iconStyle = SkinIconStyle.Mono, labelColor = "#1A1814", subColor = "#6B6355",
+        font = SkinFont.Playfair, labelWeight = 600, press = SkinPress.Sink,
+    ),
+    "Mono line" to TileSkin(
+        preset = "Mono line", fill = SkinFill.Outline, shape = SkinShape.Rounded, corner = 14f, iconStyle = SkinIconStyle.Mono,
+        font = SkinFont.JetBrainsMono, case = SkinCase.Lower, labelWeight = 400, letterSpacing = 0.5f, press = SkinPress.Sink,
+    ),
+    "Orb" to TileSkin(
+        preset = "Orb", fill = SkinFill.Mesh, color1 = "", color2 = "accent2", color3 = "warn", shape = SkinShape.Pill, corner = 99f,
+        anim = SkinAnim.Aurora, animSpeed = 0.6f, iconStyle = SkinIconStyle.Plain, showLabel = false, showSublabel = false, layout = TileLayout.IconOnly, shadow = SkinShadow.Glow,
+    ),
+    "Retro wave" to TileSkin(
+        preset = "Retro wave", fill = SkinFill.Gradient, color1 = "#2B1055", color2 = "#D53A9D", angle = 90f, shape = SkinShape.Cut, corner = 12f,
+        pattern = SkinPattern.Scanlines, patternOpacity = 0.15f, iconStyle = SkinIconStyle.Glow, font = SkinFont.Unbounded, case = SkinCase.Upper,
+        letterSpacing = 1.5f, textShadow = true, anim = SkinAnim.Shimmer,
+    ),
+    "Leaf" to TileSkin(
+        preset = "Leaf", fill = SkinFill.Gradient, color1 = "#134E5E", color2 = "#71B280", angle = 135f, shape = SkinShape.Leaf, corner = 28f,
+        iconStyle = SkinIconStyle.Circle, font = SkinFont.Syne, labelWeight = 700, shadow = SkinShadow.Soft,
+    ),
+    "Big icon" to TileSkin(
+        preset = "Big icon", fill = SkinFill.AppColour, shape = SkinShape.Squircle, corner = 26f, iconStyle = SkinIconStyle.Big,
+        iconPos = SkinIconPos.BottomEnd, labelWeight = 800, labelScale = 1.15f, font = SkinFont.SpaceGrotesk, shine = true,
+    ),
 )

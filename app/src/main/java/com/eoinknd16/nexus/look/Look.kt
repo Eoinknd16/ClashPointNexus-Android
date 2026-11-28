@@ -303,6 +303,8 @@ sealed class HomeBlock {
         val labelScale: Float = 1f,
         val paddingDp: Float = 14f,
         val tileLayout: TileLayout = TileLayout.Stack,
+        /** How the tiles are arranged: grid, sideways carousel, staggered, hero... */
+        val arrange: TilesArrange = TilesArrange.Grid,
     ) : HomeBlock()
 
     @Serializable
@@ -431,6 +433,85 @@ sealed class HomeBlock {
         val framed: Boolean = true,
     ) : HomeBlock()
 
+    /** Quick switches: torch, Wi-Fi, Bluetooth, Do Not Disturb, volume, etc. */
+    @Serializable
+    @SerialName("toggles")
+    data class Toggles(
+        override val id: String = newId(),
+        override val visible: Boolean = true,
+        override val pin: BlockPin = BlockPin.None,
+        override val locked: Boolean = false,
+        val items: List<ToggleKind> = listOf(ToggleKind.Torch, ToggleKind.Wifi, ToggleKind.Bluetooth, ToggleKind.Dnd, ToggleKind.Volume),
+        val style: ToggleStyle = ToggleStyle.Circles,
+        val sizeDp: Float = 52f,
+        val showLabels: Boolean = true,
+        val framed: Boolean = false,
+    ) : HomeBlock()
+
+    /** Your next calendar events. */
+    @Serializable
+    @SerialName("agenda")
+    data class Agenda(
+        override val id: String = newId(),
+        override val visible: Boolean = true,
+        override val pin: BlockPin = BlockPin.None,
+        override val locked: Boolean = false,
+        val title: String = "Coming up",
+        val days: Int = 3,
+        val maxItems: Int = 4,
+        val style: AgendaStyle = AgendaStyle.List,
+        val framed: Boolean = true,
+    ) : HomeBlock()
+
+    /** A sticky note right on the home screen. */
+    @Serializable
+    @SerialName("note")
+    data class Note(
+        override val id: String = newId(),
+        override val visible: Boolean = true,
+        override val pin: BlockPin = BlockPin.None,
+        override val locked: Boolean = false,
+        val text: String = "",
+        val sizeSp: Float = 16f,
+        val align: Align = Align.Start,
+        val handwritten: Boolean = false,
+        val framed: Boolean = true,
+    ) : HomeBlock()
+
+    /** Days (and hours) until something. */
+    @Serializable
+    @SerialName("countdown")
+    data class Countdown(
+        override val id: String = newId(),
+        override val visible: Boolean = true,
+        override val pin: BlockPin = BlockPin.None,
+        override val locked: Boolean = false,
+        val title: String = "Christmas",
+        /** yyyy-MM-dd HH:mm */
+        val target: String = "2026-12-25 00:00",
+        val style: CountdownStyle = CountdownStyle.Big,
+        val showProgress: Boolean = true,
+        /** When the countdown started (for the progress bar); set when you pick the date. */
+        val startedAt: Long = 0L,
+        val framed: Boolean = true,
+    ) : HomeBlock()
+
+    /** A photo of your choice, optionally slowly drifting. */
+    @Serializable
+    @SerialName("photo")
+    data class Photo(
+        override val id: String = newId(),
+        override val visible: Boolean = true,
+        override val pin: BlockPin = BlockPin.None,
+        override val locked: Boolean = false,
+        val uri: String = "",
+        val heightDp: Float = 180f,
+        val caption: String = "",
+        val drift: Boolean = true,
+        val fade: Boolean = true,
+        val dim: Float = 0f,
+    ) : HomeBlock()
+
     /** Battery level as liquid in a glass that sloshes when you tilt or shake the phone. */
     @Serializable
     @SerialName("liquid")
@@ -472,6 +553,11 @@ sealed class HomeBlock {
             is Glance -> "At a glance"
             is Liquid -> "Liquid battery"
             is Rings -> "Device rings"
+            is Toggles -> "Quick toggles"
+            is Agenda -> "Calendar"
+            is Note -> "Note"
+            is Countdown -> "Countdown"
+            is Photo -> "Photo"
         }
 
     fun withVisible(v: Boolean): HomeBlock = copyMeta(visible = v)
@@ -493,6 +579,11 @@ sealed class HomeBlock {
         is Glance -> copy(visible = visible, pin = pin, locked = locked)
         is Liquid -> copy(visible = visible, pin = pin, locked = locked)
         is Rings -> copy(visible = visible, pin = pin, locked = locked)
+        is Toggles -> copy(visible = visible, pin = pin, locked = locked)
+        is Agenda -> copy(visible = visible, pin = pin, locked = locked)
+        is Note -> copy(visible = visible, pin = pin, locked = locked)
+        is Countdown -> copy(visible = visible, pin = pin, locked = locked)
+        is Photo -> copy(visible = visible, pin = pin, locked = locked)
     }
 }
 
@@ -745,6 +836,8 @@ data class HomeLayout(
     val appQuickMenus: Boolean = true,
     /** Per-block width / alignment / scale, by block id. */
     val blockSizes: Map<String, BlockSize> = emptyMap(),
+    /** Per-block look (background, corners, border, glow...), by block id. */
+    val blockStyles: Map<String, BlockStyle> = emptyMap(),
 ) {
     companion object {
         fun defaultTiles(): List<TileConfig> = listOf(
@@ -877,3 +970,71 @@ enum class RingKind(val label: String, val short: String) {
 enum class RingStyle(val label: String) {
     Separate("Side by side"), Nested("Nested (Apple Watch style)"), Arcs("Gauges (270° arcs)"), Bars("Slim bars"),
 }
+
+@Serializable
+enum class TilesArrange(val label: String) {
+    Grid("Grid"), Carousel("Sideways carousel"), Hero("Hero (first tile big)"), Staggered("Staggered"), Mosaic("Mosaic"),
+}
+
+@Serializable
+enum class ToggleKind(val label: String) {
+    Torch("Torch"), Wifi("Wi-Fi"), Bluetooth("Bluetooth"), Dnd("Do Not Disturb"), Volume("Volume"),
+    Silent("Ring / vibrate / silent"), Brightness("Display"), Hotspot("Hotspot"), Location("Location"),
+    Airplane("Aeroplane mode"), Camera("Camera"), Nfc("NFC"), Data("Mobile data"), Battery("Battery saver"),
+}
+
+@Serializable
+enum class ToggleStyle(val label: String) { Circles("Circles"), Pills("Pills"), Squares("Squares"), Minimal("Icons only") }
+
+@Serializable
+enum class AgendaStyle(val label: String) { List("List"), Timeline("Timeline"), Cards("Cards"), Compact("One line each") }
+
+@Serializable
+enum class CountdownStyle(val label: String) { Big("Big number"), Split("Days · hours · minutes"), Compact("One line"), Ring("Ring") }
+
+@Serializable
+enum class BlockBg(val label: String) {
+    None("Nothing"), Panel("Nexus panel"), Glass("Frosted glass"), Solid("Solid colour"), Gradient("Gradient"), Mesh("Mesh blobs"),
+}
+
+/** The look of any one home block, on top of whatever it draws itself. */
+@Serializable
+data class BlockStyle(
+    val preset: String = "",
+    val bg: BlockBg = BlockBg.None,
+    val color1: String = "panel",
+    val color2: String = "accent2",
+    val angle: Float = 135f,
+    val opacity: Float = 1f,
+    /** Corner radius in dp; negative = same as everywhere. */
+    val corner: Float = -1f,
+    val padding: Float = 14f,
+    val marginTop: Float = 0f,
+    val marginBottom: Float = 0f,
+    val borderWidth: Float = 0f,
+    val borderColor: String = "accent",
+    val borderGradient: Boolean = false,
+    val glow: Float = 0f,
+    val glowColor: String = "accent",
+    val shadow: Float = 0f,
+    val shine: Boolean = false,
+    val tilt3d: Boolean = false,
+    /** Whole block see-through-ness. */
+    val alpha: Float = 1f,
+    /** Slight rotation in degrees (sticker / collage looks). */
+    val rotate: Float = 0f,
+)
+
+val blockStylePresets: List<Pair<String, BlockStyle>> = listOf(
+    "As it is" to BlockStyle(),
+    "Card" to BlockStyle(preset = "Card", bg = BlockBg.Solid, color1 = "panel", corner = 20f, shadow = 10f),
+    "Glass" to BlockStyle(preset = "Glass", bg = BlockBg.Glass, corner = 24f, borderWidth = 0.6f, borderColor = "#40FFFFFF", shine = true),
+    "Outline" to BlockStyle(preset = "Outline", corner = 18f, borderWidth = 1f, borderColor = "muted"),
+    "Gradient banner" to BlockStyle(preset = "Gradient banner", bg = BlockBg.Gradient, color1 = "accent", color2 = "accent2", opacity = 0.35f, corner = 22f),
+    "Neon edge" to BlockStyle(preset = "Neon edge", bg = BlockBg.Solid, color1 = "deep", corner = 16f, borderWidth = 1.2f, borderGradient = true, glow = 14f),
+    "Floating" to BlockStyle(preset = "Floating", bg = BlockBg.Solid, color1 = "panel", corner = 26f, shadow = 24f, tilt3d = true),
+    "Aurora" to BlockStyle(preset = "Aurora", bg = BlockBg.Mesh, color1 = "accent", color2 = "accent2", opacity = 0.4f, corner = 28f, shine = true),
+    "Sticker" to BlockStyle(preset = "Sticker", bg = BlockBg.Solid, color1 = "#F3EBDD", corner = 8f, shadow = 8f, rotate = -2f),
+    "Hairline" to BlockStyle(preset = "Hairline", corner = 0f, borderWidth = 0.5f, borderColor = "line", padding = 12f),
+    "Ghost" to BlockStyle(preset = "Ghost", bg = BlockBg.Solid, color1 = "text", opacity = 0.05f, corner = 20f),
+)

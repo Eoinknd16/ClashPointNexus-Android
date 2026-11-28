@@ -210,6 +210,11 @@ fun BlockContent(
         is HomeBlock.Glance -> GlanceView(block, vm)
         is HomeBlock.Liquid -> LiquidBattery(block)
         is HomeBlock.Rings -> RingsView(block)
+        is HomeBlock.Toggles -> TogglesView(block)
+        is HomeBlock.Agenda -> AgendaView(block)
+        is HomeBlock.Note -> NoteView(block)
+        is HomeBlock.Countdown -> CountdownView(block)
+        is HomeBlock.Photo -> PhotoView(block)
     }
 }
 
@@ -457,6 +462,28 @@ private fun TilesGrid(
     val gap = b.gapDp.coerceIn(0f, 40f).dp
     val style = TileStyle(b.iconSizeDp.dp, b.labelScale, b.paddingDp.dp, b.tileLayout)
 
+    if (b.arrange == com.eoinknd16.nexus.look.TilesArrange.Carousel) {
+        // Sideways strip: "Columns" tiles fit across, with a peek of the next one so it's obviously scrollable.
+        androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val across = cols + 0.35f
+            val tileW = (maxWidth - gap * cols) / across
+            val tileH = if (b.rowHeightDp > 0f) b.rowHeightDp.dp else tileW / b.aspect.coerceIn(0.4f, 3f)
+            androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(gap)) {
+                items(b.tiles.size, key = { b.tiles[it].id }) { i ->
+                    val tile = b.tiles[i]
+                    val wMul = tile.colSpan.coerceIn(1, 3)
+                    TileView(
+                        tile = tile, runner = runner, showSublabel = b.showSublabels, index = i,
+                        modifier = Modifier.width(tileW * wMul + gap * (wMul - 1)).height(tileH),
+                        onOpenFolder = onOpenFolder, onLongPress = { onEditTile(tile) }, style = style, editMode = editMode,
+                    )
+                }
+                if (editMode || b.tiles.isEmpty()) item("add") { AddCell(Modifier.width(tileW).height(tileH), onAddTile) }
+            }
+        }
+        return
+    }
+
     // ---- Drag & drop (edit mode): pick up, others reflow live, drop onto an app to make a folder.
     var dragId by remember { mutableStateOf<String?>(null) }
     var order by remember(b.tiles) { mutableStateOf(b.tiles.map { it.id }) }
@@ -469,7 +496,17 @@ private fun TilesGrid(
     val byId = b.tiles.associateBy { it.id }
     val shown: List<TileConfig> = if (dragId != null) order.mapNotNull { byId[it] } else b.tiles
     val cells: List<TileConfig?> = shown + if (editMode || b.tiles.isEmpty()) listOf(null) else emptyList()
-    val spans = cells.map { t -> (t?.colSpan ?: 1).coerceIn(1, cols) to (t?.rowSpan ?: 1).coerceIn(1, 4) }
+    val mosaic = listOf(2 to 2, 1 to 1, 1 to 1, 1 to 1, 2 to 1, 1 to 2, 1 to 1)
+    val spans = cells.mapIndexed { i, t ->
+        val own = (t?.colSpan ?: 1) to (t?.rowSpan ?: 1)
+        val auto = if (t == null || own != (1 to 1)) own else when (b.arrange) {
+            com.eoinknd16.nexus.look.TilesArrange.Hero -> if (i == 0) cols to 2 else own
+            com.eoinknd16.nexus.look.TilesArrange.Staggered -> if (i % 3 == 0) 1 to 2 else own
+            com.eoinknd16.nexus.look.TilesArrange.Mosaic -> mosaic[i % mosaic.size]
+            else -> own
+        }
+        auto.first.coerceIn(1, cols) to auto.second.coerceIn(1, 4)
+    }
 
     fun commit() {
         val id = dragId ?: return

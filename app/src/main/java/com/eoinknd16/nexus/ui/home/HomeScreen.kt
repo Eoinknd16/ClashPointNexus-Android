@@ -244,6 +244,7 @@ fun HomeScreen() {
                 },
             ) {
                 SizedBlock(home.blockSizes[block.id]) {
+                StyledBlock(home.blockStyles[block.id]) {
                 BlockContent(
                     block = block,
                     vm = vm,
@@ -256,6 +257,7 @@ fun HomeScreen() {
                     },
                     onAddTile = { editing = HomeEdit.Tile(block.id, null) },
                 )
+                }
                 }
             }
         }
